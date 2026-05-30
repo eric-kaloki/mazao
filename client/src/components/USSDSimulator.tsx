@@ -107,7 +107,21 @@ export default function USSDSimulator() {
   const handleSubmit = () => {
     if (loading || sessionEnded || !displayInput.trim()) return
     const segment = displayInput.trim().toUpperCase()
-    const nextText = inputText ? `${inputText}*${segment}` : segment
+    
+    let nextText = inputText
+    if (segment === '00') {
+      // Home
+      nextText = ''
+    } else if (segment === '0' && inputText !== '') {
+      // Back one level
+      const parts = inputText.split('*').filter(Boolean)
+      parts.pop()
+      nextText = parts.join('*')
+    } else {
+      // Normal input
+      nextText = inputText ? `${inputText}*${segment}` : segment
+    }
+
     setInputText(nextText)
     setDisplayInput('')
     sendSession(nextText)

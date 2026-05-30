@@ -249,7 +249,7 @@ func (s *Store) GetLockedReceipts() []*ProduceReceipt {
 	defer s.mu.RUnlock()
 	var result []*ProduceReceipt
 	for _, r := range s.receipts {
-		if r.Status == StatusLockedCollateral {
+		if r.Status == StatusLockedCollateral || r.Status == StatusAvailable {
 			result = append(result, r)
 		}
 	}
@@ -300,8 +300,8 @@ func (s *Store) SettleReceiptWithTimestamp(id string) error {
 	if !ok {
 		return fmt.Errorf("receipt %s not found", id)
 	}
-	if r.Status != StatusLockedCollateral {
-		return fmt.Errorf("receipt %s is not LOCKED_COLLATERAL (current: %s)", id, r.Status)
+	if r.Status == StatusSettled {
+		return fmt.Errorf("receipt %s is already settled", id)
 	}
 	now := time.Now()
 	r.Status = StatusSettled
@@ -321,8 +321,8 @@ func (s *Store) SetTargetPrice(receiptID, farmerID string, target *float64) erro
 	if r.FarmerID != normalized {
 		return fmt.Errorf("receipt does not belong to farmer %s", farmerID)
 	}
-	if r.Status != StatusLockedCollateral {
-		return fmt.Errorf("can only set target price on LOCKED receipts")
+	if r.Status == StatusSettled {
+		return fmt.Errorf("cannot set target price on SETTLED receipts")
 	}
 	r.TargetSellPrice = target
 	return nil

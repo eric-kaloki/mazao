@@ -338,6 +338,7 @@ function ReceiptCard({ receipt: r, actionLoading, onManualSell, onSetTargetPrice
       <div className="rc-grade">{r.grade_info}</div>
 
       {/* Financial metrics */}
+      {/* Financial metrics */}
       {r.status === 'AVAILABLE' && (
         <>
           <div className="rc-metrics">
@@ -346,7 +347,7 @@ function ReceiptCard({ receipt: r, actionLoading, onManualSell, onSetTargetPrice
               <span className="rc-metric-value">{formatKES(r.price_at_deposit)}/bag</span>
             </div>
             <div className="rc-metric">
-              <span className="rc-metric-label">Live Market Value</span>
+              <span className="rc-metric-label">Current Market Value</span>
               <span className="rc-metric-value rc-metric-live">{formatKES(r.current_market_value_kes)}</span>
             </div>
             <div className="rc-metric">
@@ -354,6 +355,7 @@ function ReceiptCard({ receipt: r, actionLoading, onManualSell, onSetTargetPrice
               <span className="rc-metric-value rc-metric-gold">{formatKES(depositBasedMaxLoan)}</span>
             </div>
           </div>
+          
           <form onSubmit={handleLoanSubmit} className="rc-loan-form" style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
             <input
               type="number"
@@ -374,27 +376,29 @@ function ReceiptCard({ receipt: r, actionLoading, onManualSell, onSetTargetPrice
       )}
 
       {r.status === 'LOCKED_COLLATERAL' && r.active_loan && (
-        <>
-          <div className="rc-metrics">
-            <div className="rc-metric">
-              <span className="rc-metric-label">Loan Issued</span>
-              <span className="rc-metric-value rc-metric-gold">{formatKES(r.active_loan.principal_amount)}</span>
-            </div>
-            <div className="rc-metric">
-              <span className="rc-metric-label">Total Est. Debt</span>
-              <span className="rc-metric-value" style={{ color: '#F56565' }}>{formatKES(totalDebt)}</span>
-            </div>
-            <div className="rc-metric">
-              <span className="rc-metric-label">Current Market Value</span>
-              <span className="rc-metric-value rc-metric-live">{formatKES(r.current_market_value_kes)}</span>
-            </div>
-            <div className="rc-metric">
-              <span className="rc-metric-label">Est. Net Profit</span>
-              <span className="rc-metric-value rc-metric-live">{formatKES(netProfit)}</span>
-            </div>
+        <div className="rc-metrics">
+          <div className="rc-metric">
+            <span className="rc-metric-label">Loan Issued</span>
+            <span className="rc-metric-value rc-metric-gold">{formatKES(r.active_loan.principal_amount)}</span>
           </div>
-          
-          <div className="rc-actions-row">
+          <div className="rc-metric">
+            <span className="rc-metric-label">Total Est. Debt</span>
+            <span className="rc-metric-value" style={{ color: '#F56565' }}>{formatKES(totalDebt)}</span>
+          </div>
+          <div className="rc-metric">
+            <span className="rc-metric-label">Current Market Value</span>
+            <span className="rc-metric-value rc-metric-live">{formatKES(r.current_market_value_kes)}</span>
+          </div>
+          <div className="rc-metric">
+            <span className="rc-metric-label">Est. Net Profit</span>
+            <span className="rc-metric-value rc-metric-live">{formatKES(netProfit)}</span>
+          </div>
+        </div>
+      )}
+
+      {(r.status === 'AVAILABLE' || r.status === 'LOCKED_COLLATERAL') && (
+        <>
+          <div className="rc-actions-row" style={{ marginTop: 'var(--space-4)' }}>
             <button
               className="btn btn-outline rc-sell-btn"
               disabled={actionLoading !== null}

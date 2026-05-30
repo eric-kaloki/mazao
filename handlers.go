@@ -145,8 +145,8 @@ func (h *Handlers) ManualSellHandler(c *gin.Context) {
 		return
 	}
 
-	if receipt.Status != StatusLockedCollateral {
-		c.JSON(http.StatusConflict, gin.H{"error": "can only sell LOCKED_COLLATERAL receipts"})
+	if receipt.Status == StatusSettled {
+		c.JSON(http.StatusConflict, gin.H{"error": "cannot sell an already SETTLED receipt"})
 		return
 	}
 
