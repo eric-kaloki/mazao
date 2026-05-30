@@ -37,8 +37,7 @@ With this receipt, farmers can:
 ---
 
 ## 🎥 Demo Video & Features Walkthrough
-
-*(Insert link to Demo Video here)*
+[Mazao](https://youtu.be/q2xaYkl9fj4)
 
 Our Hack Day demo video showcases the end-to-end journey of a bag of Maize entering the MazaoPlus ecosystem. The video highlights:
 
@@ -78,7 +77,7 @@ Because MazaoPlus is bundled as a single Go binary, running it locally is incred
 ### Build & Run
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/mazaoplus.git
+   git clone https://github.com/eric-kaloki/mazao.gitt
    cd mazaoplus
    ```
 
