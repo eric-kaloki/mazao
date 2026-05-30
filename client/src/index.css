@@ -1,0 +1,296 @@
+/* MazaoPlus — Global Design System
+ * Palette: Forest Green + Harvest Gold on a deep dark surface.
+ * All spacing, colors, and typography live here as CSS custom properties.
+ */
+
+:root {
+  /* ---- Color Palette -------------------------------------------------------- */
+  --color-bg-base:       #060e07;
+  --color-bg-surface:    #0d1f10;
+  --color-bg-card:       #122016;
+  --color-bg-card-hover: #182a1c;
+  --color-bg-input:      #0f1d12;
+  --color-border:        #1e3a22;
+  --color-border-subtle: #162819;
+
+  /* Forest Green scale */
+  --color-green-900: #1b5e20;
+  --color-green-800: #2e7d32;
+  --color-green-700: #388e3c;
+  --color-green-600: #43a047;
+  --color-green-500: #4caf50;
+  --color-green-400: #66bb6a;
+  --color-green-300: #81c784;
+
+  /* Harvest Gold scale */
+  --color-gold-900:  #f57f17;
+  --color-gold-800:  #f9a825;
+  --color-gold-700:  #fbc02d;
+  --color-gold-600:  #fdd835;
+  --color-gold-400:  #ffee58;
+
+  /* Status colors */
+  --color-available:  #43a047;
+  --color-locked:     #f9a825;
+  --color-settled:    #29b6f6;
+  --color-error:      #ef5350;
+  --color-payout:     #00e5ff;
+
+  /* Text */
+  --color-text-primary:   #e8f5e9;
+  --color-text-secondary: #a5d6a7;
+  --color-text-muted:     #558b5a;
+  --color-text-gold:      #fbc02d;
+
+  /* ---- Typography ----------------------------------------------------------- */
+  --font-sans:  'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', monospace;
+
+  /* ---- Spacing -------------------------------------------------------------- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---- Radii & Shadows ------------------------------------------------------ */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  16px;
+  --radius-xl:  24px;
+
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-glow-green: 0 0 20px rgba(76, 175, 80, 0.15);
+  --shadow-glow-gold:  0 0 20px rgba(249, 168, 37, 0.2);
+
+  /* ---- Transitions ---------------------------------------------------------- */
+  --transition-fast:   all 0.15s ease;
+  --transition-normal: all 0.25s ease;
+  --transition-slow:   all 0.4s ease;
+}
+
+/* ---- Reset & Base ----------------------------------------------------------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Scrollbar styling ---------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-green-900);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-green-800);
+}
+
+/* ---- Utility classes ------------------------------------------------------ */
+.glass-card {
+  background: rgba(18, 32, 22, 0.7);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-card);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition-fast);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-green-800), var(--color-green-700));
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(46, 125, 50, 0.4);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--color-green-700), var(--color-green-600));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(46, 125, 50, 0.5);
+}
+
+.btn-gold {
+  background: linear-gradient(135deg, var(--color-gold-900), var(--color-gold-800));
+  color: #000;
+  box-shadow: 0 2px 8px rgba(249, 168, 37, 0.35);
+}
+.btn-gold:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--color-gold-800), var(--color-gold-700));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(249, 168, 37, 0.45);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--color-bg-card-hover);
+  border-color: var(--color-green-800);
+  color: var(--color-green-400);
+}
+
+.input-field {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  transition: var(--transition-fast);
+  outline: none;
+}
+.input-field:focus {
+  border-color: var(--color-green-700);
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.15);
+}
+.input-field::placeholder {
+  color: var(--color-text-muted);
+}
+.input-field option {
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.form-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ---- Status badges -------------------------------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.badge-available {
+  background: rgba(67, 160, 71, 0.15);
+  color: var(--color-available);
+  border: 1px solid rgba(67, 160, 71, 0.3);
+}
+.badge-locked {
+  background: rgba(249, 168, 37, 0.12);
+  color: var(--color-locked);
+  border: 1px solid rgba(249, 168, 37, 0.3);
+}
+.badge-settled {
+  background: rgba(41, 182, 246, 0.12);
+  color: var(--color-settled);
+  border: 1px solid rgba(41, 182, 246, 0.3);
+}
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-dot 2s infinite;
+}
+.badge-settled .badge-dot {
+  animation: none;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ---- Animations ----------------------------------------------------------- */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes priceFlash {
+  0%   { background: rgba(249, 168, 37, 0.25); }
+  100% { background: transparent; }
+}
+
+.animate-in {
+  animation: fadeInUp 0.35s ease forwards;
+}
+
+/* ---- Loading spinner ------------------------------------------------------- */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

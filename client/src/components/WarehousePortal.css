@@ -1,0 +1,255 @@
+/* WarehousePortal.css */
+
+.warehouse-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ---- Page Header ---------------------------------------------------------- */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.page-header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: rgba(46, 125, 50, 0.12);
+  border: 1px solid rgba(46, 125, 50, 0.25);
+  color: var(--color-green-400);
+  flex-shrink: 0;
+}
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.page-subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* ---- Content Grid --------------------------------------------------------- */
+.warehouse-content {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+/* ---- Form Card ------------------------------------------------------------ */
+.form-card {
+  padding: var(--space-6);
+}
+
+.form-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  color: var(--color-green-400);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.deposit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cost-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(249, 168, 37, 0.06);
+  border: 1px solid rgba(249, 168, 37, 0.18);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.cost-preview strong {
+  color: var(--color-gold-800);
+}
+
+.form-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(239, 83, 80, 0.08);
+  border: 1px solid rgba(239, 83, 80, 0.25);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  color: var(--color-error);
+}
+
+.submit-btn {
+  width: 100%;
+  justify-content: center;
+  padding: var(--space-3) var(--space-5);
+  font-size: 0.95rem;
+  margin-top: var(--space-2);
+}
+
+/* ---- Right Column --------------------------------------------------------- */
+.warehouse-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- Success Card --------------------------------------------------------- */
+.success-card {
+  padding: var(--space-6);
+  border-color: rgba(76, 175, 80, 0.3);
+  box-shadow: var(--shadow-glow-green);
+  text-align: center;
+}
+
+.success-icon {
+  display: flex;
+  justify-content: center;
+  color: var(--color-green-500);
+  margin-bottom: var(--space-3);
+  font-size: 1.5rem;
+}
+
+.success-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-green-400);
+  margin-bottom: var(--space-4);
+}
+
+.receipt-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  text-align: left;
+}
+
+.receipt-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.detail-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.detail-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.detail-mono {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--color-gold-800);
+}
+
+/* ---- Session Log ---------------------------------------------------------- */
+.session-log {
+  padding: var(--space-4) var(--space-5);
+}
+
+.session-log-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-3);
+}
+
+.session-receipts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.session-receipt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.session-receipt-row:last-child {
+  border-bottom: none;
+}
+
+.session-receipt-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-receipt-id {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-gold-800);
+  font-weight: 600;
+}
+
+.session-receipt-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* ---- Info Box ------------------------------------------------------------- */
+.info-box {
+  padding: var(--space-5);
+}
+
+.info-box h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.info-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-5);
+}
+
+.info-steps li {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.info-steps strong {
+  color: var(--color-available);
+}
+
+/* ---- Responsive ----------------------------------------------------------- */
+@media (max-width: 900px) {
+  .warehouse-content {
+    grid-template-columns: 1fr;
+  }
+}

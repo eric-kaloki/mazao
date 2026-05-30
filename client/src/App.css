@@ -1,0 +1,193 @@
+/* App.css — Layout & Navigation styles for MazaoPlus */
+
+.app-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(27, 94, 32, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(249, 168, 37, 0.05) 0%, transparent 60%),
+    var(--color-bg-base);
+}
+
+/* ---- Header --------------------------------------------------------------- */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-8);
+  background: rgba(13, 31, 16, 0.9);
+  border-bottom: 1px solid var(--color-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.brand-logo {
+  font-size: 2rem;
+  filter: drop-shadow(0 0 12px rgba(249, 168, 37, 0.4));
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+
+.brand-name {
+  font-size: 1.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #a5d6a7, #fbc02d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
+}
+
+.brand-tagline {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(76, 175, 80, 0.08);
+  border: 1px solid rgba(76, 175, 80, 0.2);
+  border-radius: 999px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-live {
+  background: var(--color-green-500);
+  box-shadow: 0 0 6px var(--color-green-500);
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 4px var(--color-green-500); }
+  50%       { box-shadow: 0 0 12px var(--color-green-400); }
+}
+
+.status-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-green-400);
+  letter-spacing: 0.04em;
+}
+
+/* ---- Tab Navigation ------------------------------------------------------- */
+.tab-nav {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-8);
+  background: rgba(13, 31, 16, 0.5);
+  border-bottom: 1px solid var(--color-border-subtle);
+  overflow-x: auto;
+}
+
+.tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-3) var(--space-5);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition: var(--transition-normal);
+  white-space: nowrap;
+  min-width: 180px;
+}
+
+.tab-btn svg {
+  transition: var(--transition-fast);
+}
+
+.tab-btn:hover {
+  background: var(--color-bg-card);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.tab-btn--active {
+  background: rgba(46, 125, 50, 0.12);
+  border-color: var(--color-green-800);
+  color: var(--color-green-400);
+  box-shadow: 0 0 16px rgba(46, 125, 50, 0.1);
+}
+
+.tab-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tab-description {
+  font-size: 0.72rem;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.tab-btn--active .tab-description {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+/* ---- Main Content --------------------------------------------------------- */
+.app-main {
+  flex: 1;
+  padding: var(--space-8);
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ---- Footer --------------------------------------------------------------- */
+.app-footer {
+  padding: var(--space-4) var(--space-8);
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* ---- Responsive ----------------------------------------------------------- */
+@media (max-width: 768px) {
+  .app-header {
+    padding: var(--space-3) var(--space-4);
+  }
+  .brand-tagline { display: none; }
+  .tab-nav {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-1);
+  }
+  .tab-btn {
+    min-width: 140px;
+    padding: var(--space-2) var(--space-3);
+  }
+  .tab-description { display: none; }
+  .app-main {
+    padding: var(--space-4);
+  }
+}

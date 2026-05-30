@@ -1,0 +1,137 @@
+/* TerminalMonitor.css */
+
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  height: 480px;
+  border-color: rgba(30, 58, 34, 0.8);
+  background: rgba(4, 10, 5, 0.9) !important;
+}
+
+/* ---- Terminal Chrome ------------------------------------------------------ */
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(13, 20, 14, 0.95);
+  border-bottom: 1px solid rgba(30, 58, 34, 0.8);
+  flex-shrink: 0;
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.tdot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+
+.tdot--red    { background: #ff5f56; }
+.tdot--yellow { background: #ffbd2e; }
+.tdot--green  { background: #27c93f; }
+
+.terminal-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.terminal-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  color: var(--color-green-400);
+  font-weight: 600;
+}
+
+/* ---- Terminal Body -------------------------------------------------------- */
+.terminal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.65;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.terminal-connecting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  padding: var(--space-3) 0;
+}
+
+.log-line {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-width: 0;
+  animation: fadeIn 0.2s ease forwards;
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-2);
+  transition: background 0.15s;
+}
+
+.log-line:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.log-line--highlight {
+  background: rgba(249, 168, 37, 0.04);
+  border-left: 2px solid rgba(249, 168, 37, 0.3);
+  padding-left: var(--space-2);
+}
+
+.log-time {
+  color: #2d5a30;
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.log-level {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  width: 56px;
+}
+
+.log-msg {
+  word-break: break-word;
+  white-space: pre-wrap;
+  font-size: 0.7rem;
+}
+
+/* ---- Terminal Footer ------------------------------------------------------ */
+.terminal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  background: rgba(13, 20, 14, 0.8);
+  border-top: 1px solid rgba(30, 58, 34, 0.5);
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.terminal-footer-hint {
+  opacity: 0.6;
+}
