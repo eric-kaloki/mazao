@@ -86,13 +86,16 @@ func (a *Agent) tick() {
 		}
 
 		// ---- Settlement check per commodity -----------------------------------
-		if price >= mkt.TargetThreshold {
-			if !a.settled[mkt.Commodity] {
-				a.settled[mkt.Commodity] = true
-				a.triggerSettlement(mkt.Commodity, price)
+		// We evaluate smart contracts (TargetSellPrice) for all locked receipts
+		locked := a.store.GetLockedReceipts()
+		for _, r := range locked {
+			if r.CommodityType == mkt.Commodity && r.TargetSellPrice != nil {
+				if price >= *r.TargetSellPrice {
+					// We use a receipt-level deduplication to avoid repeated logs in the same tick if we want,
+					// but it's simpler to just pass the receipt directly to a new trigger method.
+					a.triggerSmartSell(r, price)
+				}
 			}
-		} else {
-			a.settled[mkt.Commodity] = false
 		}
 	}
 
@@ -102,71 +105,34 @@ func (a *Agent) tick() {
 	}
 }
 
-// triggerSettlement settles all auto-sell-enabled receipts for a commodity.
-func (a *Agent) triggerSettlement(commodity string, marketPrice float64) {
+// triggerSmartSell settles a specific receipt that hit its user-defined target price.
+func (a *Agent) triggerSmartSell(receipt *ProduceReceipt, marketPrice float64) {
 	a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogTrigger,
-		Message: fmt.Sprintf("🔔 %s THRESHOLD BREACH — KES %.2f ≥ threshold — initiating settlement loop", commodity, marketPrice)})
+		Message: fmt.Sprintf("🔔 TARGET REACHED — Receipt %s hit KES %.2f (Target: KES %.0f) — initiating smart sell",
+			receipt.ID[:8], marketPrice, *receipt.TargetSellPrice)})
 
-	locked := a.store.GetLockedReceipts()
-	var eligible []*ProduceReceipt
-	for _, r := range locked {
-		if r.CommodityType == commodity && r.AutoSellEnabled {
-			eligible = append(eligible, r)
-		}
-	}
+	result := calculateSettlement(a.store, receipt, marketPrice)
+	logSettlementBreakdown(a.store, result)
 
-	// Count opted-out receipts for transparency
-	optedOut := 0
-	for _, r := range locked {
-		if r.CommodityType == commodity && !r.AutoSellEnabled {
-			optedOut++
-		}
-	}
-
-	if optedOut > 0 {
-		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogWarn,
-			Message: fmt.Sprintf("⏸  %d %s receipt(s) have auto-sell DISABLED — farmer-initiated sale required", optedOut, commodity)})
-	}
-
-	if len(eligible) == 0 {
-		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogWarn,
-			Message: fmt.Sprintf("⚠️  No auto-sell eligible %s receipts — settlement idle", commodity)})
+	if err := a.store.SettleReceiptWithTimestamp(receipt.ID); err != nil {
+		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogError,
+			Message: fmt.Sprintf("✗ Failed to settle receipt %s: %v", receipt.ID[:8], err)})
 		return
 	}
-
-	a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogTrigger,
-		Message: fmt.Sprintf("📋 Settling %d %s receipt(s)", len(eligible), commodity)})
-
-	totalNet := 0.0
-	for _, receipt := range eligible {
-		result := calculateSettlement(a.store, receipt, marketPrice)
-		logSettlementBreakdown(a.store, result)
-
-		if err := a.store.SettleReceiptWithTimestamp(receipt.ID); err != nil {
-			a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogError,
-				Message: fmt.Sprintf("✗ Failed to settle receipt %s: %v", receipt.ID[:8], err)})
-			continue
-		}
-		if loan, ok := a.store.GetLoanByReceipt(receipt.ID); ok {
-			a.store.SettleLoanWithTimestamp(loan.ID)
-		}
-
-		// Credit wallet
-		a.store.CreditFarmerWallet(receipt.FarmerID,
-			fmt.Sprintf("%s settlement — %d bags × KES %.2f", commodity, receipt.QuantityBags, marketPrice),
-			result.NetProfit)
-		a.store.IncrementLoansSettled(receipt.FarmerID)
-		a.store.RecalculateCreditScore(receipt.FarmerID)
-
-		txID := fmt.Sprintf("MP%d", time.Now().UnixMilli()%1000000)
-		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogPayout,
-			Message: fmt.Sprintf("💸 M-PESA B2C | TxID: %s | To: %s | Net: KES %.2f | Status: SUCCESS", txID, receipt.FarmerID, result.NetProfit)})
-
-		totalNet += result.NetProfit
+	if loan, ok := a.store.GetLoanByReceipt(receipt.ID); ok {
+		a.store.SettleLoanWithTimestamp(loan.ID)
 	}
 
+	// Credit wallet
+	a.store.CreditFarmerWallet(receipt.FarmerID,
+		fmt.Sprintf("%s smart sell — %d bags × KES %.2f", receipt.CommodityType, receipt.QuantityBags, marketPrice),
+		result.NetProfit)
+	a.store.IncrementLoansSettled(receipt.FarmerID)
+	a.store.RecalculateCreditScore(receipt.FarmerID)
+
+	txID := fmt.Sprintf("MP%d", time.Now().UnixMilli()%1000000)
 	a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogPayout,
-		Message: fmt.Sprintf("✅ %s settlement done — %d receipt(s) cleared | Total disbursed: KES %.2f", commodity, len(eligible), totalNet)})
+		Message: fmt.Sprintf("💸 M-PESA B2C | TxID: %s | To: %s | Net: KES %.2f | Status: SUCCESS", txID, receipt.FarmerID, result.NetProfit)})
 }
 
 // runArbitration checks for underwater or near-expired receipts and reconciles.

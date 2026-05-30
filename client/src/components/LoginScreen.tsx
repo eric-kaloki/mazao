@@ -1,31 +1,36 @@
 import React, { useState } from 'react'
-import { User, LogIn, AlertCircle } from 'lucide-react'
+import { User, LogIn } from 'lucide-react'
 import { loginFarmer } from '../api/client'
 import { useFarmer } from '../context/FarmerContext'
+import { useToast } from '../context/ToastContext'
 import './LoginScreen.css'
 
-export default function LoginScreen() {
+interface Props {
+  onBack?: () => void
+}
+
+export default function LoginScreen({ onBack }: Props) {
   const { setFarmer } = useFarmer()
+  const { showToast } = useToast()
   const [nationalId, setNationalId] = useState('')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [isRegistering, setIsRegistering] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!nationalId.trim()) return
 
     setLoading(true)
-    setError(null)
 
     try {
       // loginFarmer upserts the farmer profile.
       const farmerData = await loginFarmer(nationalId, fullName, phone)
       setFarmer(farmerData)
+      showToast(`Welcome, ${farmerData.full_name}`, 'success')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
+      showToast(err instanceof Error ? err.message : 'Login failed', 'error')
     } finally {
       setLoading(false)
     }
@@ -48,6 +53,12 @@ export default function LoginScreen() {
           <h2>Farmer Portal</h2>
           <p>Login with your National ID</p>
         </div>
+        
+        {onBack && (
+          <button type="button" className="btn btn-link" onClick={onBack} style={{ marginBottom: 'var(--space-4)', alignSelf: 'flex-start' }}>
+            &larr; Back to Role Selection
+          </button>
+        )}
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
@@ -88,13 +99,6 @@ export default function LoginScreen() {
                 />
               </div>
             </>
-          )}
-
-          {error && (
-            <div className="form-error">
-              <AlertCircle size={15} />
-              {error}
-            </div>
           )}
 
           <button type="submit" className="btn btn-primary login-btn" disabled={loading}>

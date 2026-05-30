@@ -259,7 +259,7 @@ export default function USSDSimulator() {
                 </div>
                 <div className="flow-branch">
                   <div className="flow-node">2 → Cash Advance</div>
-                  <div className="flow-desc">Enter ID → confirm loan → M-Pesa disbursed</div>
+                  <div className="flow-desc">Enter ID → input requested amount → M-Pesa disbursed</div>
                 </div>
                 <div className="flow-branch">
                   <div className="flow-node">3 → Market Price</div>
@@ -270,8 +270,8 @@ export default function USSDSimulator() {
                   <div className="flow-desc">Enter ID → total owed incl. interest + fees</div>
                 </div>
                 <div className="flow-branch">
-                  <div className="flow-node">5 → Auto-Sell Settings</div>
-                  <div className="flow-desc">Toggle agent auto-sell for locked receipts</div>
+                  <div className="flow-node">5 → Smart Sell Target</div>
+                  <div className="flow-desc">Set or clear numeric target price for locked receipts</div>
                 </div>
                 <div className="flow-branch">
                   <div className="flow-node">6 → Credit Profile</div>

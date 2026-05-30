@@ -31,7 +31,7 @@ export interface ProduceReceipt {
   holding_cost_per_bag_month: number
   price_at_deposit: number
   deposit_value_kes: number
-  auto_sell_enabled: boolean
+  target_sell_price?: number
   status: 'AVAILABLE' | 'LOCKED_COLLATERAL' | 'SETTLED'
   created_at: string
   settled_at?: string
@@ -185,21 +185,22 @@ export async function manualSellReceipt(receiptId: string, farmerId: string): Pr
   return res.json()
 }
 
-export async function toggleAutoSell(receiptId: string, farmerId: string, enabled: boolean): Promise<void> {
-  const res = await fetch(`${BASE}/receipts/${receiptId}/autosell`, {
+export async function setTargetPrice(receiptId: string, farmerId: string, targetPrice: number | null): Promise<void> {
+  const res = await fetch(`${BASE}/receipts/${receiptId}/target-price`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ farmer_id: farmerId, enabled }),
+    body: JSON.stringify({ farmer_id: farmerId, target_price: targetPrice }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(err.error || 'Toggle failed')
+    throw new Error(err.error || 'Failed to set target price')
   }
 }
 
 export async function applyForLoan(data: {
   receipt_id: string
   farmer_id: string
+  requested_amount?: number
 }): Promise<LoanApplicationResponse> {
   const res = await fetch(`${BASE}/loans/apply`, {
     method: 'POST',
@@ -274,4 +275,24 @@ export function formatTime(iso: string): string {
 
 export function generateSessionId(): string {
   return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+export interface CommodityMetrics {
+  total_bags: number
+  total_value_kes: number
+}
+
+export interface AdminMetrics {
+  total_farmers: number
+  total_active_loans: number
+  total_loan_value_kes: number
+  total_collateral_value_kes: number
+  total_disbursed: number
+  commodities: Record<string, CommodityMetrics>
+}
+
+export async function getAdminMetrics(): Promise<AdminMetrics> {
+  const res = await fetch(`${BASE}/admin/metrics`)
+  if (!res.ok) throw new Error('Failed to fetch admin metrics')
+  return res.json()
 }

@@ -64,7 +64,7 @@ func main() {
 		v1.POST("/receipts", handlers.CreateReceiptHandler)
 		v1.GET("/receipts/farmer/:id", handlers.GetFarmerReceiptsHandler)
 		v1.POST("/receipts/:id/sell", handlers.ManualSellHandler)
-		v1.PATCH("/receipts/:id/autosell", handlers.ToggleAutoSellHandler)
+		v1.PATCH("/receipts/:id/target-price", handlers.SetTargetPriceHandler)
 
 		// Loans
 		v1.POST("/loans/apply", handlers.ApplyForLoanHandler)
@@ -77,6 +77,9 @@ func main() {
 		// SSE & USSD
 		v1.GET("/logs/stream", handlers.StreamLogsHandler)
 		v1.POST("/ussd", handlers.USSDHandler)
+
+		// Admin
+		v1.GET("/admin/metrics", handlers.GetAdminMetricsHandler)
 	}
 
 	// ---- Serve embedded frontend --------------------------------------------

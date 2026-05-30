@@ -214,7 +214,7 @@ func (s *Store) CreateReceipt(req ReceiptCreateRequest, priceAtDeposit float64) 
 		HoldingCostPerBagMonth: 10.0,
 		PriceAtDeposit:         priceAtDeposit,
 		DepositValueKES:        float64(req.QuantityBags) * priceAtDeposit,
-		AutoSellEnabled:        true, // default on
+		TargetSellPrice:        nil, // user must explicitly set
 		Status:                 StatusAvailable,
 		CreatedAt:              time.Now(),
 	}
@@ -309,8 +309,8 @@ func (s *Store) SettleReceiptWithTimestamp(id string) error {
 	return nil
 }
 
-// ToggleAutoSell enables or disables agent auto-settlement for a receipt.
-func (s *Store) ToggleAutoSell(receiptID, farmerID string, enabled bool) error {
+// SetTargetPrice sets the user-defined smart contract target for a receipt.
+func (s *Store) SetTargetPrice(receiptID, farmerID string, target *float64) error {
 	normalized := normalizeFarmerID(farmerID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -322,9 +322,9 @@ func (s *Store) ToggleAutoSell(receiptID, farmerID string, enabled bool) error {
 		return fmt.Errorf("receipt does not belong to farmer %s", farmerID)
 	}
 	if r.Status != StatusLockedCollateral {
-		return fmt.Errorf("can only toggle auto-sell on LOCKED receipts")
+		return fmt.Errorf("can only set target price on LOCKED receipts")
 	}
-	r.AutoSellEnabled = enabled
+	r.TargetSellPrice = target
 	return nil
 }
 
@@ -499,6 +499,50 @@ func (s *Store) RemoveLogListener(ch chan AgentLogEntry) {
 		}
 	}
 	s.logListeners = updated
+}
+
+// ---- Admin Dashboard -----------------------------------------------------------
+
+func (s *Store) GetAdminMetrics() AdminMetrics {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	metrics := AdminMetrics{
+		TotalFarmers: len(s.farmers),
+		Commodities:  make(map[string]CommodityMetrics),
+	}
+
+	for _, l := range s.loans {
+		if !l.IsSettled {
+			metrics.TotalActiveLoans++
+			metrics.TotalLoanValueKES += l.PrincipalAmount
+		}
+	}
+
+	for _, f := range s.farmers {
+		metrics.TotalDisbursed += f.TotalDisbursed
+	}
+
+	for _, r := range s.receipts {
+		if r.Status == StatusAvailable || r.Status == StatusLockedCollateral {
+			cm := metrics.Commodities[r.CommodityType]
+			cm.TotalBags += r.QuantityBags
+			
+			livePrice := r.PriceAtDeposit // default
+			if mkt, ok := s.commodities[r.CommodityType]; ok {
+				livePrice = mkt.CurrentPrice
+			}
+			value := float64(r.QuantityBags) * livePrice
+			cm.TotalValueKES += value
+			metrics.Commodities[r.CommodityType] = cm
+
+			if r.Status == StatusLockedCollateral {
+				metrics.TotalCollateralValueKES += value
+			}
+		}
+	}
+
+	return metrics
 }
 
 // ---- Seed Data ---------------------------------------------------------------

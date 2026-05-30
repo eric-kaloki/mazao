@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { User, Wallet, Lock, CheckCircle, AlertCircle, RefreshCw, HandCoins, Settings2 } from 'lucide-react'
+import { User, Wallet, Lock, CheckCircle, RefreshCw, HandCoins, Settings2 } from 'lucide-react'
 import {
   getFarmerReceipts,
   manualSellReceipt,
-  toggleAutoSell,
+  setTargetPrice,
+  applyForLoan,
   type EnrichedReceipt,
   type SettlementResult,
   formatKES,
 } from '../api/client'
 import { useFarmer } from '../context/FarmerContext'
+import { useToast } from '../context/ToastContext'
 import CreditScore from './CreditScore'
+import AnimatedNumber from './AnimatedNumber'
 import './FarmerDashboard.css'
 
 export default function FarmerDashboard() {
@@ -17,7 +20,7 @@ export default function FarmerDashboard() {
   const [receipts, setReceipts] = useState<EnrichedReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { showToast } = useToast()
   const [settlementResult, setSettlementResult] = useState<SettlementResult | null>(null)
   const currentFarmerRef = useRef(farmer?.national_id || '')
 
@@ -30,13 +33,12 @@ export default function FarmerDashboard() {
 
   const fetchReceipts = useCallback(async (id: string, silent = false) => {
     if (!silent) setLoading(true)
-    setError(null)
     try {
       const data = await getFarmerReceipts(id)
       setReceipts(data.receipts)
     } catch (err) {
       if (!silent) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch receipts')
+        showToast(err instanceof Error ? err.message : 'Failed to fetch receipts', 'error')
         setReceipts([])
       }
     } finally {
@@ -60,28 +62,66 @@ export default function FarmerDashboard() {
     if (!confirm(`Are you sure you want to sell ${receipt.quantity_bags} bags of ${receipt.commodity_type} at the current market price?`)) return
     
     setActionLoading(receipt.id)
-    setError(null)
+    
+    const previousReceipts = [...receipts]
+    // Optimistic update: instantly remove or mark as settled
+    setReceipts(prev => prev.map(r => r.id === receipt.id ? { ...r, status: 'SETTLED' } : r))
+
     try {
       const result = await manualSellReceipt(receipt.id, farmer!.national_id)
       setSettlementResult(result)
-      await fetchReceipts(farmer!.national_id)
+      showToast('Sale successful', 'success')
+      await fetchReceipts(farmer!.national_id, true)
       await refreshFarmer()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Manual sell failed')
+      setReceipts(previousReceipts)
+      showToast(err instanceof Error ? err.message : 'Manual sell failed', 'error')
     } finally {
       setActionLoading(null)
     }
   }
 
-  const handleToggleAutoSell = async (receipt: EnrichedReceipt) => {
+  const handleSetTargetPrice = async (receipt: EnrichedReceipt, target: number | null) => {
     if (actionLoading) return
     setActionLoading(receipt.id)
-    setError(null)
+    
+    const previousReceipts = [...receipts]
+    // Optimistic update
+    setReceipts(prev => prev.map(r => r.id === receipt.id ? { ...r, target_sell_price: target ?? undefined } : r))
+
     try {
-      await toggleAutoSell(receipt.id, farmer!.national_id, !receipt.auto_sell_enabled)
-      await fetchReceipts(farmer!.national_id, true)
+      await setTargetPrice(receipt.id, farmer!.national_id, target)
+      showToast(target ? `Smart Sell set to KES ${target}` : 'Smart Sell disabled', 'success')
+      // Background sync to ensure correctness
+      fetchReceipts(farmer!.national_id, true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to toggle auto-sell')
+      setReceipts(previousReceipts)
+      showToast(err instanceof Error ? err.message : 'Failed to set target price', 'error')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleApplyLoan = async (receipt: EnrichedReceipt, requestedAmount: number) => {
+    if (actionLoading) return
+    setActionLoading(receipt.id)
+
+    const previousReceipts = [...receipts]
+    // Optimistic update: fake the loan to update UI instantly
+    setReceipts(prev => prev.map(r => r.id === receipt.id ? { 
+      ...r, 
+      status: 'LOCKED_COLLATERAL',
+      active_loan: { id: 'temp', farmer_id: r.farmer_id, principal_amount: requestedAmount, interest_rate: 0.12, status: 'ACTIVE', created_at: new Date().toISOString(), loan_type: 'RECEIPT_BACKED', is_settled: false }
+    } : r))
+
+    try {
+      await applyForLoan({ receipt_id: receipt.id, farmer_id: farmer!.national_id, requested_amount: requestedAmount })
+      showToast(`Loan of KES ${requestedAmount} approved & disbursed!`, 'success')
+      await fetchReceipts(farmer!.national_id, true)
+      await refreshFarmer()
+    } catch (err) {
+      setReceipts(previousReceipts)
+      showToast(err instanceof Error ? err.message : 'Failed to apply for loan', 'error')
     } finally {
       setActionLoading(null)
     }
@@ -112,28 +152,22 @@ export default function FarmerDashboard() {
           <div className="wallet-label">
             <Wallet size={16} /> Wallet Balance
           </div>
-          <div className="wallet-amount">{formatKES(farmer.wallet_balance)}</div>
+          <div className="wallet-amount"><AnimatedNumber value={farmer.wallet_balance} format="kes" /></div>
         </div>
       </div>
 
       <div className="dashboard-grid">
         {/* Left Column: Receipts */}
         <div className="receipts-column">
-          <div className="column-header">
-            <h3>My Receipts</h3>
-            {hasLocked && (
-              <div className="auto-refresh-badge">
-                <RefreshCw size={12} className="spin-slow" /> Auto-refreshing
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <div className="form-error animate-in" style={{ borderRadius: 'var(--radius-md)' }}>
-              <AlertCircle size={15} />
-              {error}
+          <div className="column-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '32px' }}>
+            <h3 style={{ margin: 0 }}>My Receipts</h3>
+            <div 
+              className="auto-refresh-badge" 
+              style={{ visibility: hasLocked ? 'visible' : 'hidden' }}
+            >
+              <RefreshCw size={12} className="spin-slow" /> Auto-refreshing
             </div>
-          )}
+          </div>
 
           {/* ---- Settlement Breakdown Modal (inline for Hack Day) ------------- */}
           {settlementResult && (
@@ -186,16 +220,27 @@ export default function FarmerDashboard() {
           )}
 
           <div className="receipts-list">
-            {receipts.map((r, i) => (
+            {loading && receipts.length === 0 && (
+              <>
+                <div className="receipt-card glass-card skeleton-card animate-in" style={{ height: '280px', opacity: 0.7 }} />
+                <div className="receipt-card glass-card skeleton-card animate-in" style={{ height: '280px', opacity: 0.5, animationDelay: '100ms' }} />
+              </>
+            )}
+            {!loading && receipts.length > 0 && receipts.map((r, i) => (
               <ReceiptCard
                 key={r.id}
                 receipt={r}
                 actionLoading={actionLoading}
                 onManualSell={handleManualSell}
-                onToggleAutoSell={handleToggleAutoSell}
+                onSetTargetPrice={handleSetTargetPrice}
+                onApplyLoan={handleApplyLoan}
                 animDelay={i * 80}
               />
             ))}
+          </div>
+
+          <div className="disclaimer-note" style={{ marginTop: 'var(--space-4)', padding: 'var(--space-3)', background: 'rgba(255, 255, 255, 0.03)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255, 255, 255, 0.05)', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+            <strong style={{ color: 'var(--color-gold-400)' }}>Important:</strong> Market sales are settled and disbursed within 24-48 hours. Loan disbursements to your M-Pesa account happen immediately upon approval.
           </div>
         </div>
 
@@ -214,11 +259,16 @@ interface ReceiptCardProps {
   receipt: EnrichedReceipt
   actionLoading: string | null
   onManualSell: (r: EnrichedReceipt) => void
-  onToggleAutoSell: (r: EnrichedReceipt) => void
+  onSetTargetPrice: (r: EnrichedReceipt, target: number | null) => void
+  onApplyLoan: (r: EnrichedReceipt, amount: number) => void
   animDelay: number
 }
 
-function ReceiptCard({ receipt: r, actionLoading, onManualSell, onToggleAutoSell, animDelay }: ReceiptCardProps) {
+function ReceiptCard({ receipt: r, actionLoading, onManualSell, onSetTargetPrice, onApplyLoan, animDelay }: ReceiptCardProps) {
+  const [loanAmountStr, setLoanAmountStr] = useState('')
+  const [targetPriceStr, setTargetPriceStr] = useState('')
+  const [showTargetForm, setShowTargetForm] = useState(false)
+
   // Storage fee: accrued from created_at to now
   const daysStored = Math.max(0, (Date.now() - new Date(r.created_at).getTime()) / 86400000)
   const storageFee = daysStored * r.quantity_bags * (r.holding_cost_per_bag_month / 30)
@@ -243,6 +293,28 @@ function ReceiptCard({ receipt: r, actionLoading, onManualSell, onToggleAutoSell
     LOCKED_COLLATERAL: { label: 'Locked',       cls: 'badge-locked' },
     SETTLED:           { label: 'Settled',      cls: 'badge-settled' },
   }[r.status]
+
+  const handleLoanSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const amt = parseFloat(loanAmountStr)
+    if (amt > 0 && amt <= depositBasedMaxLoan) {
+      onApplyLoan(r, amt)
+    }
+  }
+
+  const handleTargetSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (targetPriceStr.trim() === '') {
+      onSetTargetPrice(r, null)
+      setShowTargetForm(false)
+      return
+    }
+    const val = parseFloat(targetPriceStr)
+    if (val > 0) {
+      onSetTargetPrice(r, val)
+      setShowTargetForm(false)
+    }
+  }
 
   return (
     <div
@@ -282,9 +354,22 @@ function ReceiptCard({ receipt: r, actionLoading, onManualSell, onToggleAutoSell
               <span className="rc-metric-value rc-metric-gold">{formatKES(depositBasedMaxLoan)}</span>
             </div>
           </div>
-          <div className="rc-price-note">
-            💡 Switch to the Warehouse Portal to apply for a loan (demo simulation).
-          </div>
+          <form onSubmit={handleLoanSubmit} className="rc-loan-form" style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
+            <input
+              type="number"
+              placeholder={`Amount (Max: ${depositBasedMaxLoan})`}
+              className="input-field"
+              value={loanAmountStr}
+              onChange={(e) => setLoanAmountStr(e.target.value)}
+              max={depositBasedMaxLoan}
+              min={1}
+              style={{ flex: 1 }}
+              required
+            />
+            <button type="submit" className="btn btn-primary" disabled={actionLoading === r.id}>
+              {actionLoading === r.id ? <span className="spinner" /> : 'Apply Loan'}
+            </button>
+          </form>
         </>
       )}
 
@@ -320,25 +405,39 @@ function ReceiptCard({ receipt: r, actionLoading, onManualSell, onToggleAutoSell
             </button>
             
             <button
-              className={`btn ${r.auto_sell_enabled ? 'btn-gold' : 'btn-outline'} rc-toggle-btn`}
+              className={`btn ${r.target_sell_price ? 'btn-gold' : 'btn-outline'} rc-toggle-btn`}
               disabled={actionLoading !== null}
-              onClick={() => onToggleAutoSell(r)}
-              title={r.auto_sell_enabled ? "Auto-sell is ON" : "Auto-sell is OFF"}
+              onClick={() => setShowTargetForm(!showTargetForm)}
             >
               <Settings2 size={14} />
-              {r.auto_sell_enabled ? 'Auto-Sell ON' : 'Auto-Sell OFF'}
+              {r.target_sell_price ? 'Smart Sell ON' : 'Set Smart Sell'}
             </button>
           </div>
+
+          {showTargetForm && (
+            <form onSubmit={handleTargetSubmit} style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
+              <input
+                type="number"
+                placeholder="Target price per bag (or empty to clear)"
+                className="input-field"
+                value={targetPriceStr}
+                onChange={(e) => setTargetPriceStr(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="btn btn-primary" disabled={actionLoading === r.id}>Save</button>
+            </form>
+          )}
           
-          {r.auto_sell_enabled ? (
+          {!showTargetForm && r.target_sell_price && (
             <div className="rc-locked-note">
               <Lock size={13} />
-              Agent will auto-settle when market hits threshold.
+              Agent will auto-sell when market hits KES {r.target_sell_price}.
             </div>
-          ) : (
+          )}
+          {!showTargetForm && !r.target_sell_price && (
             <div className="rc-locked-note" style={{ background: 'rgba(245, 101, 101, 0.1)', borderColor: 'rgba(245, 101, 101, 0.2)', color: '#FC8181' }}>
               <Lock size={13} />
-              Auto-sell disabled. You must sell manually.
+              No target price set. You must sell manually.
             </div>
           )}
         </>

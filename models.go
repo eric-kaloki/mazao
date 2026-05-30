@@ -25,7 +25,7 @@ type ProduceReceipt struct {
 	HoldingCostPerBagMonth float64       `json:"holding_cost_per_bag_month"`
 	PriceAtDeposit         float64       `json:"price_at_deposit"`
 	DepositValueKES        float64       `json:"deposit_value_kes"`
-	AutoSellEnabled        bool          `json:"auto_sell_enabled"` // agent will settle when true
+	TargetSellPrice        *float64      `json:"target_sell_price"` // Phase 4 smart contract target
 	Status                 ReceiptStatus `json:"status"`
 	CreatedAt              time.Time     `json:"created_at"`
 	SettledAt              *time.Time    `json:"settled_at,omitempty"`
@@ -153,15 +153,32 @@ type ReceiptCreateRequest struct {
 }
 
 type LoanApplicationRequest struct {
-	ReceiptID string `json:"receipt_id" binding:"required"`
-	FarmerID  string `json:"farmer_id"  binding:"required"`
+	ReceiptID       string   `json:"receipt_id" binding:"required"`
+	FarmerID        string   `json:"farmer_id"  binding:"required"`
+	RequestedAmount *float64 `json:"requested_amount"` // Optional: up to 60% max
 }
 
 type LoanApplicationResponse struct {
 	Loan            Loan    `json:"loan"`
 	DisbursedKES    float64 `json:"disbursed_kes"`
 	DepositValueKES float64 `json:"deposit_value_kes"`
-	LTVPercent      int     `json:"ltv_percent"`
+	LTVPercent      float64 `json:"ltv_percent"`
+}
+
+// ---- Admin Metrics -----------------------------------------------------------
+
+type CommodityMetrics struct {
+	TotalBags     int     `json:"total_bags"`
+	TotalValueKES float64 `json:"total_value_kes"`
+}
+
+type AdminMetrics struct {
+	TotalFarmers            int                         `json:"total_farmers"`
+	TotalActiveLoans        int                         `json:"total_active_loans"`
+	TotalLoanValueKES       float64                     `json:"total_loan_value_kes"`
+	TotalCollateralValueKES float64                     `json:"total_collateral_value_kes"`
+	TotalDisbursed          float64                     `json:"total_disbursed"`
+	Commodities             map[string]CommodityMetrics `json:"commodities"`
 }
 
 // FarmerLoginRequest — enter National ID to authenticate.
@@ -176,10 +193,10 @@ type ManualSellRequest struct {
 	FarmerID string `json:"farmer_id" binding:"required"`
 }
 
-// AutoSellToggleRequest — toggle per-receipt automatic settlement.
-type AutoSellToggleRequest struct {
-	FarmerID string `json:"farmer_id" binding:"required"`
-	Enabled  bool   `json:"enabled"`
+// TargetPriceRequest — set per-receipt smart sell target.
+type TargetPriceRequest struct {
+	FarmerID    string   `json:"farmer_id" binding:"required"`
+	TargetPrice *float64 `json:"target_price"`
 }
 
 // InputLoanRequest — apply for a credit-score-gated non-receipt loan.

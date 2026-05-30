@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { Shield, TrendingUp, AlertCircle, Coins, Gift } from 'lucide-react'
+import { Shield, TrendingUp, Coins, Gift } from 'lucide-react'
 import { useFarmer } from '../context/FarmerContext'
+import { useToast } from '../context/ToastContext'
+import AnimatedNumber from './AnimatedNumber'
 import { applyInputLoan, formatKES } from '../api/client'
 import './CreditScore.css'
 
 export default function CreditScore() {
   const { farmer, refreshFarmer } = useFarmer()
+  const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
 
   if (!farmer) return null
 
@@ -25,8 +26,6 @@ export default function CreditScore() {
   const handleApplyInputLoan = async () => {
     if (farmer.credit_band === 'BRONZE') return
     setLoading(true)
-    setError(null)
-    setSuccess(null)
     
     // Auto-calculate requested amount based on band
     let amount = 0
@@ -41,10 +40,10 @@ export default function CreditScore() {
         amount_kes: amount,
         description: 'Season Input Finance'
       })
-      setSuccess(`Success! Disbursed ${formatKES(res.disbursed_kes)} to M-Pesa.`)
+      showToast(`Success! Disbursed ${formatKES(res.disbursed_kes)} to M-Pesa.`, 'success')
       refreshFarmer()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Application failed')
+      showToast(err instanceof Error ? err.message : 'Application failed', 'error')
     } finally {
       setLoading(false)
     }
@@ -83,7 +82,7 @@ export default function CreditScore() {
           </div>
         </div>
         <div className="cs-score-text">
-          <span className="cs-score-value" style={{ color: scoreColor }}>{farmer.credit_score}</span>
+          <span className="cs-score-value" style={{ color: scoreColor }}><AnimatedNumber value={farmer.credit_score} format="number" /></span>
           <span className="cs-score-max">/ 1000</span>
         </div>
         <div className="cs-band-badge" style={{ borderColor: scoreColor, color: scoreColor }}>
@@ -94,11 +93,11 @@ export default function CreditScore() {
       <div className="cs-stats">
         <div className="cs-stat">
           <span className="stat-label">Loans Settled</span>
-          <span className="stat-value">{farmer.loans_settled}</span>
+          <span className="stat-value"><AnimatedNumber value={farmer.loans_settled} format="number" /></span>
         </div>
         <div className="cs-stat">
           <span className="stat-label">Total Disbursed</span>
-          <span className="stat-value">{formatKES(farmer.total_disbursed)}</span>
+          <span className="stat-value"><AnimatedNumber value={farmer.total_disbursed} format="kes" /></span>
         </div>
       </div>
 
@@ -130,8 +129,6 @@ export default function CreditScore() {
 
       {farmer.credit_score >= 400 && (
         <div className="cs-action">
-          {error && <div className="form-error mb-2"><AlertCircle size={14}/> {error}</div>}
-          {success && <div className="form-success mb-2">{success}</div>}
           <button 
             className="btn btn-outline apply-input-btn" 
             onClick={handleApplyInputLoan}

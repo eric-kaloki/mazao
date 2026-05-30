@@ -38,13 +38,40 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode; description: string
 ]
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState<Tab>('warehouse')
+  const [role, setRole] = useState<'none' | 'farmer' | 'manager'>('none')
+  const [activeTab, setActiveTab] = useState<Tab>('farmer')
   const { farmer, setFarmer } = useFarmer()
+
+  // Auto-switch tabs based on role
+  React.useEffect(() => {
+    if (role === 'manager') setActiveTab('warehouse')
+    if (role === 'farmer') setActiveTab('farmer')
+  }, [role])
+
+  if (role === 'none') {
+    return (
+      <div className="app-layout" style={{ justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--color-bg)' }}>
+        <div className="glass-card" style={{ padding: 'var(--space-8)', textAlign: 'center', maxWidth: 400 }}>
+          <div style={{ fontSize: '3rem', marginBottom: 'var(--space-4)' }}>🌽</div>
+          <h1 style={{ marginBottom: 'var(--space-2)' }}>MazaoPlus</h1>
+          <p style={{ color: 'var(--color-text-muted)', marginBottom: 'var(--space-8)' }}>Select your role to continue</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <button className="btn btn-primary" onClick={() => setRole('farmer')} style={{ padding: 'var(--space-4)' }}>
+              I am a Farmer
+            </button>
+            <button className="btn btn-outline" onClick={() => setRole('manager')} style={{ padding: 'var(--space-4)' }}>
+              I am a Warehouse Manager
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app-layout">
-      {/* Show login overlay if not authenticated */}
-      {!farmer && <LoginScreen />}
+      {/* Show login overlay if farmer role but not authenticated */}
+      {role === 'farmer' && !farmer && <LoginScreen onBack={() => setRole('none')} />}
 
       {/* ---- Header -------------------------------------------------------- */}
       <header className="app-header">
@@ -57,12 +84,20 @@ function AppContent() {
         </div>
         
         <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
-          {farmer && (
+          {role === 'manager' && (
+            <div className="header-farmer" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ fontWeight: 'bold', color: 'var(--color-gold-400)' }}>Warehouse Manager</span>
+              <button onClick={() => setRole('none')} className="btn btn-outline" style={{ padding: '4px 8px', fontSize: '0.7rem' }}>
+                <LogOut size={12} />
+              </button>
+            </div>
+          )}
+          {role === 'farmer' && farmer && (
             <div className="header-farmer" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Logged in as:</span>
               <span style={{ fontWeight: 'bold', color: 'var(--color-gold-400)' }}>{farmer.full_name}</span>
               <button 
-                onClick={() => setFarmer(null)} 
+                onClick={() => { setFarmer(null); setRole('none'); }} 
                 className="btn btn-outline" 
                 style={{ padding: '4px 8px', height: 'auto', fontSize: '0.7rem' }}
                 title="Logout"
@@ -80,20 +115,24 @@ function AppContent() {
 
       {/* ---- Tab Navigation ----------------------------------------------- */}
       <nav className="tab-nav" role="navigation" aria-label="Main navigation">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            id={`tab-${tab.id}`}
-            className={`tab-btn ${activeTab === tab.id ? 'tab-btn--active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-            aria-selected={activeTab === tab.id}
-            role="tab"
-          >
-            {tab.icon}
-            <span className="tab-label">{tab.label}</span>
-            <span className="tab-description">{tab.description}</span>
-          </button>
-        ))}
+        {TABS.map((tab) => {
+          if (role === 'farmer' && tab.id === 'warehouse') return null;
+          if (role === 'manager' && tab.id === 'farmer') return null;
+          return (
+            <button
+              key={tab.id}
+              id={`tab-${tab.id}`}
+              className={`tab-btn ${activeTab === tab.id ? 'tab-btn--active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              aria-selected={activeTab === tab.id}
+              role="tab"
+            >
+              {tab.icon}
+              <span className="tab-label">{tab.label}</span>
+              <span className="tab-description">{tab.description}</span>
+            </button>
+          )
+        })}
       </nav>
 
       {/* ---- Main Content -------------------------------------------------- */}
@@ -112,10 +151,14 @@ function AppContent() {
   )
 }
 
+import { ToastProvider } from './context/ToastContext'
+
 export default function App() {
   return (
-    <FarmerProvider>
-      <AppContent />
-    </FarmerProvider>
+    <ToastProvider>
+      <FarmerProvider>
+        <AppContent />
+      </FarmerProvider>
+    </ToastProvider>
   )
 }
