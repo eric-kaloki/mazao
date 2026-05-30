@@ -9,7 +9,7 @@ COPY client/ ./
 RUN npm run build
 
 # Stage 2: Build the Go Backend
-FROM golang:1.22-alpine AS backend-builder
+FROM golang:1.25-alpine AS backend-builder
 WORKDIR /app
 # Install necessary build tools (make, git)
 RUN apk add --no-cache make git
