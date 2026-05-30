@@ -13,6 +13,7 @@ const LEVEL_COLORS: Record<AgentLogEntry['level'], string> = {
   TRIGGER: 'var(--color-gold-400)',
   PAYOUT:  'var(--color-payout)',
   ERROR:   'var(--color-error)',
+  ARBITRATION: '#F6AD55', // Orange for Arbitration
 }
 
 const LEVEL_LABELS: Record<AgentLogEntry['level'], string> = {
@@ -21,6 +22,7 @@ const LEVEL_LABELS: Record<AgentLogEntry['level'], string> = {
   TRIGGER: 'TRIGGER',
   PAYOUT:  'PAYOUT ',
   ERROR:   'ERROR  ',
+  ARBITRATION: 'ARBITR ',
 }
 
 export default function TerminalMonitor({ logs }: Props) {

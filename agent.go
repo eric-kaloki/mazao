@@ -1,9 +1,5 @@
 // Package main — agent.go
-// The Autonomous Market Agent — MazaoPlus's star feature.
-// Runs as an independent goroutine, simulating grain market price movements
-// inspired by Selina Wamucii price index data (KES 2,500–4,500 / bag).
-// When the price crosses the profitable threshold (KES 3,500), it atomically
-// settles all LOCKED_COLLATERAL receipts, simulating an M-Pesa B2C payout.
+// Phase 3: Multi-commodity price simulation + auto-sell toggle + arbitration agent.
 package main
 
 import (
@@ -14,245 +10,268 @@ import (
 )
 
 const (
-	// tickInterval controls how often the agent "wakes up".
-	// 5 seconds = one simulated market day for demo purposes.
-	tickInterval = 5 * time.Second
-
-	priceMin       = 2500.0
-	priceMax       = 4500.0
-	priceThreshold = 3500.0
-
-	// Cycle period — full sinusoidal price cycle in ticks.
-	// At 5s per tick, 40 ticks ≈ 3.3 minutes for a full price cycle.
-	cycleTicks = 40
+	tickInterval  = 5 * time.Second
+	cycleTicks    = 40
+	arbCheckTicks = 6 // arbitration runs every 6 ticks (~30 simulated days)
 )
 
-// Agent holds the stateful components of the background monitoring goroutine.
+// Agent holds state for the autonomous background goroutine.
 type Agent struct {
 	store    *Store
-	tickNum  int     // monotonically increasing tick counter
-	settled  bool    // true once a settlement has fired this cycle
+	tickNum  int
+	settled  map[string]bool // commodity → settled this cycle
 }
 
-// StartMonitoring launches the autonomous price-monitoring goroutine.
-// It blocks until the program exits — call with `go agent.StartMonitoring(...)`.
 func StartMonitoring(store *Store) {
-	a := &Agent{store: store}
+	a := &Agent{
+		store:   store,
+		settled: make(map[string]bool),
+	}
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
-	store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogInfo,
-		Message:   "🚀 MazaoPlus Autonomous Market Agent started — monitoring Maize prices (Selina Wamucii index)",
-	})
-	store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogInfo,
-		Message:   fmt.Sprintf("📈 Price corridor: KES %.0f – %.0f | Settlement threshold: KES %.0f", priceMin, priceMax, priceThreshold),
-	})
-	store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogInfo,
-		Message:   fmt.Sprintf("⏱  Tick interval: %s (each tick = one simulated market day)", tickInterval),
-	})
+	store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogInfo,
+		Message: "🚀 MazaoPlus Autonomous Market Agent started — monitoring 5 commodities"})
+	store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogInfo,
+		Message: fmt.Sprintf("⏱  Tick: %s | Settlement: auto per-commodity threshold | Arbitration: every %d ticks", tickInterval, arbCheckTicks)})
+
+	for _, c := range defaultCommodities {
+		store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogInfo,
+			Message: fmt.Sprintf("📊 %s | KES %.0f–%.0f | ⚡ threshold KES %.0f", c.Commodity, c.PriceMin, c.PriceMax, c.TargetThreshold)})
+	}
 
 	for range ticker.C {
 		a.tick()
 	}
 }
 
-// tick runs on every ticker fire — simulates one market day.
 func (a *Agent) tick() {
 	a.tickNum++
 
-	// ---- Price Simulation -----------------------------------------------
-	// Sinusoidal base oscillating between priceMin and priceMax.
-	// Phase is offset so the price starts at a trough and naturally rises.
-	phase := (2 * math.Pi * float64(a.tickNum)) / float64(cycleTicks)
-	// Offset phase by π so we start at trough and rise toward threshold.
-	midpoint := (priceMin + priceMax) / 2
-	amplitude := (priceMax - priceMin) / 2
-	base := midpoint + amplitude*math.Sin(phase-math.Pi/2)
+	// ---- Update all commodity prices ----------------------------------------
+	prices := a.store.GetAllMarketPrices()
+	for _, mkt := range prices {
+		// Independent sine wave per commodity, offset by a stable phase shift
+		phaseDeg := (2 * math.Pi * float64(a.tickNum)) / float64(cycleTicks)
+		// Different commodities lead/lag by commodity-specific offsets
+		phaseOffset := map[string]float64{
+			"Maize": -math.Pi / 2, "Wheat": math.Pi / 4,
+			"Sorghum": -math.Pi, "Millet": math.Pi / 6, "Rice": math.Pi / 3,
+		}[mkt.Commodity]
 
-	// Add realistic market noise (±3%)
-	noise := (rand.Float64()*0.06 - 0.03) * base
-	price := math.Round((base+noise)*100) / 100
+		midpoint := (mkt.PriceMin + mkt.PriceMax) / 2
+		amplitude := (mkt.PriceMax - mkt.PriceMin) / 2
+		base := midpoint + amplitude*math.Sin(phaseDeg+phaseOffset)
 
-	// Clamp to corridor
-	if price < priceMin {
-		price = priceMin
-	}
-	if price > priceMax {
-		price = priceMax
-	}
-
-	a.store.UpdateMarketPrice(price)
-
-	// Direction emoji for visual clarity in the terminal
-	prevPrice := a.store.GetMarketPrice().CurrentPrice
-	direction := "📈"
-	if price < prevPrice {
-		direction = "📉"
-	}
-
-	a.store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogInfo,
-		Message: fmt.Sprintf(
-			"%s Day %d | Maize spot price: KES %.2f/bag | Threshold: KES %.0f",
-			direction, a.tickNum, price, priceThreshold,
-		),
-	})
-
-	// ---- Settlement Logic -----------------------------------------------
-	if price >= priceThreshold {
-		if !a.settled {
-			// First time crossing threshold this cycle — fire settlement
-			a.settled = true
-			a.triggerSettlement(price)
+		noise := (rand.Float64()*2 - 1) * mkt.Volatility * base
+		price := math.Round((base+noise)*100) / 100
+		if price < mkt.PriceMin {
+			price = mkt.PriceMin
 		}
-	} else {
-		// Price fell back below threshold — reset so it can fire again next cycle
-		a.settled = false
+		if price > mkt.PriceMax {
+			price = mkt.PriceMax
+		}
+
+		a.store.UpdateCommodityPrice(mkt.Commodity, price)
+
+		// Only log Maize price every tick, others every 3 ticks (reduce noise)
+		if mkt.Commodity == "Maize" || a.tickNum%3 == 0 {
+			direction := "📈"
+			if price < mkt.CurrentPrice {
+				direction = "📉"
+			}
+			a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogInfo,
+				Message: fmt.Sprintf("%s Day %d | %s: KES %.2f/bag (threshold KES %.0f)",
+					direction, a.tickNum, mkt.Commodity, price, mkt.TargetThreshold)})
+		}
+
+		// ---- Settlement check per commodity -----------------------------------
+		if price >= mkt.TargetThreshold {
+			if !a.settled[mkt.Commodity] {
+				a.settled[mkt.Commodity] = true
+				a.triggerSettlement(mkt.Commodity, price)
+			}
+		} else {
+			a.settled[mkt.Commodity] = false
+		}
+	}
+
+	// ---- Arbitration check ---------------------------------------------------
+	if a.tickNum%arbCheckTicks == 0 {
+		a.runArbitration()
 	}
 }
 
-// triggerSettlement atomically processes all LOCKED_COLLATERAL receipts.
-// This is the "money shot" for the Hack Day demo.
-func (a *Agent) triggerSettlement(marketPrice float64) {
-	a.store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogTrigger,
-		Message: fmt.Sprintf(
-			"🔔 THRESHOLD BREACH — Price KES %.2f ≥ KES %.0f — Initiating atomic settlement loop",
-			marketPrice, priceThreshold,
-		),
-	})
+// triggerSettlement settles all auto-sell-enabled receipts for a commodity.
+func (a *Agent) triggerSettlement(commodity string, marketPrice float64) {
+	a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogTrigger,
+		Message: fmt.Sprintf("🔔 %s THRESHOLD BREACH — KES %.2f ≥ threshold — initiating settlement loop", commodity, marketPrice)})
 
 	locked := a.store.GetLockedReceipts()
+	var eligible []*ProduceReceipt
+	for _, r := range locked {
+		if r.CommodityType == commodity && r.AutoSellEnabled {
+			eligible = append(eligible, r)
+		}
+	}
 
-	if len(locked) == 0 {
-		a.store.AppendLog(AgentLogEntry{
-			Timestamp: time.Now(),
-			Level:     LogWarn,
-			Message:   "⚠️  No LOCKED_COLLATERAL receipts found — settlement loop idle",
-		})
+	// Count opted-out receipts for transparency
+	optedOut := 0
+	for _, r := range locked {
+		if r.CommodityType == commodity && !r.AutoSellEnabled {
+			optedOut++
+		}
+	}
+
+	if optedOut > 0 {
+		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogWarn,
+			Message: fmt.Sprintf("⏸  %d %s receipt(s) have auto-sell DISABLED — farmer-initiated sale required", optedOut, commodity)})
+	}
+
+	if len(eligible) == 0 {
+		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogWarn,
+			Message: fmt.Sprintf("⚠️  No auto-sell eligible %s receipts — settlement idle", commodity)})
 		return
 	}
 
-	a.store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogTrigger,
-		Message:   fmt.Sprintf("📋 Found %d receipt(s) eligible for settlement", len(locked)),
-	})
+	a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogTrigger,
+		Message: fmt.Sprintf("📋 Settling %d %s receipt(s)", len(eligible), commodity)})
 
-	totalNetProfit := 0.0
+	totalNet := 0.0
+	for _, receipt := range eligible {
+		result := calculateSettlement(a.store, receipt, marketPrice)
+		logSettlementBreakdown(a.store, result)
 
-	for _, receipt := range locked {
-		result := a.calculateSettlement(receipt, marketPrice)
+		if err := a.store.SettleReceiptWithTimestamp(receipt.ID); err != nil {
+			a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogError,
+				Message: fmt.Sprintf("✗ Failed to settle receipt %s: %v", receipt.ID[:8], err)})
+			continue
+		}
+		if loan, ok := a.store.GetLoanByReceipt(receipt.ID); ok {
+			a.store.SettleLoanWithTimestamp(loan.ID)
+		}
 
-		// Log per-receipt calculation breakdown
-		a.store.AppendLog(AgentLogEntry{
-			Timestamp: time.Now(),
-			Level:     LogTrigger,
-			Message: fmt.Sprintf(
-				"  ├─ Receipt %s | Farmer %s | %d bags × KES %.2f = Gross KES %.2f",
-				receipt.ID[:8], receipt.FarmerID, receipt.QuantityBags, marketPrice, result.GrossRevenue,
-			),
-		})
-		a.store.AppendLog(AgentLogEntry{
-			Timestamp: time.Now(),
-			Level:     LogTrigger,
-			Message: fmt.Sprintf(
-				"  ├─ Total Debt: KES %.2f (principal + interest + storage fees)",
-				result.TotalDebt,
-			),
-		})
-		a.store.AppendLog(AgentLogEntry{
-			Timestamp: time.Now(),
-			Level:     LogTrigger,
-			Message: fmt.Sprintf(
-				"  └─ NET PROFIT: KES %.2f → routing to farmer wallet",
-				result.NetProfit,
-			),
-		})
+		// Credit wallet
+		a.store.CreditFarmerWallet(receipt.FarmerID,
+			fmt.Sprintf("%s settlement — %d bags × KES %.2f", commodity, receipt.QuantityBags, marketPrice),
+			result.NetProfit)
+		a.store.IncrementLoansSettled(receipt.FarmerID)
+		a.store.RecalculateCreditScore(receipt.FarmerID)
 
-		// Atomically update state
-		if err := a.store.SettleReceipt(receipt.ID); err != nil {
-			a.store.AppendLog(AgentLogEntry{
-				Timestamp: time.Now(),
-				Level:     LogError,
-				Message:   fmt.Sprintf("  ✗ Failed to settle receipt %s: %v", receipt.ID[:8], err),
-			})
+		txID := fmt.Sprintf("MP%d", time.Now().UnixMilli()%1000000)
+		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogPayout,
+			Message: fmt.Sprintf("💸 M-PESA B2C | TxID: %s | To: %s | Net: KES %.2f | Status: SUCCESS", txID, receipt.FarmerID, result.NetProfit)})
+
+		totalNet += result.NetProfit
+	}
+
+	a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogPayout,
+		Message: fmt.Sprintf("✅ %s settlement done — %d receipt(s) cleared | Total disbursed: KES %.2f", commodity, len(eligible), totalNet)})
+}
+
+// runArbitration checks for underwater or near-expired receipts and reconciles.
+func (a *Agent) runArbitration() {
+	a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogArbitration,
+		Message: "🏛  Arbitration agent woke — scanning for underwater / near-expiry positions"})
+
+	locked := a.store.GetLockedReceipts()
+	if len(locked) == 0 {
+		return
+	}
+
+	reconciled := 0
+	for _, r := range locked {
+		mkt, ok := a.store.GetCommodityPrice(r.CommodityType)
+		if !ok {
 			continue
 		}
 
-		// Settle the associated loan
-		if loan, ok := a.store.GetLoanByReceipt(receipt.ID); ok {
-			a.store.SettleLoan(loan.ID)
+		loan, hasLoan := a.store.GetLoanByReceipt(r.ID)
+		if !hasLoan {
+			continue
 		}
 
-		// Simulate M-Pesa B2C payout event
-		a.store.AppendLog(AgentLogEntry{
-			Timestamp: time.Now(),
-			Level:     LogPayout,
-			Message: fmt.Sprintf(
-				"💸 M-PESA B2C | TransactionID: MP%d | To: %s | Amount: KES %.2f | Status: SUCCESS",
-				time.Now().UnixMilli()%1000000, receipt.FarmerID, result.NetProfit,
-			),
-		})
-
-		totalNetProfit += result.NetProfit
-	}
-
-	a.store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogPayout,
-		Message: fmt.Sprintf(
-			"✅ Settlement complete — %d receipt(s) cleared | Total disbursed: KES %.2f | Warehouse space released",
-			len(locked), totalNetProfit,
-		),
-	})
-}
-
-// calculateSettlement computes the gross revenue, total debt, and net profit
-// for a single receipt at the given market price.
-//
-// Formulas:
-//
-//	GrossRevenue = Bags × CurrentMarketPrice
-//	StorageFee   = Bags × HoldingCostPerBagMonth × (DaysElapsed / 30)
-//	Debt         = Principal + (Principal × InterestRate × DaysElapsed/365) + StorageFee
-//	NetProfit    = GrossRevenue − Debt
-func (a *Agent) calculateSettlement(receipt *ProduceReceipt, marketPrice float64) SettlementResult {
-	daysElapsed := time.Since(receipt.CreatedAt).Hours() / 24
-
-	grossRevenue := float64(receipt.QuantityBags) * marketPrice
-
-	// Prorated monthly storage fee
-	storageFee := float64(receipt.QuantityBags) * receipt.HoldingCostPerBagMonth * (daysElapsed / 30)
-
-	totalDebt := 0.0
-	if loan, ok := a.store.GetLoanByReceipt(receipt.ID); ok {
+		daysElapsed := time.Since(r.CreatedAt).Hours() / 24
+		currentValue := float64(r.QuantityBags) * mkt.CurrentPrice
 		accrualFraction := daysElapsed / 365
 		interest := loan.PrincipalAmount * loan.InterestRate * accrualFraction
-		totalDebt = loan.PrincipalAmount + interest + storageFee
-	} else {
-		// No loan — only storage fee is owed
-		totalDebt = storageFee
+		storageFee := float64(r.QuantityBags) * r.HoldingCostPerBagMonth * (daysElapsed / 30)
+		totalDebt := loan.PrincipalAmount + interest + storageFee
+		ltv := totalDebt / currentValue
+
+		// Flag cases: LTV > 90% or position > 85 days
+		if ltv > 0.90 || daysElapsed > 85 {
+			a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogArbitration,
+				Message: fmt.Sprintf("⚖️  Receipt %s | Farmer: %s | LTV: %.1f%% | Days: %.0f | Value: KES %.2f vs Debt: KES %.2f",
+					r.ID[:8], r.FarmerID, ltv*100, daysElapsed, currentValue, totalDebt)})
+
+			if currentValue < totalDebt {
+				a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogArbitration,
+					Message: fmt.Sprintf("  ⚠️  UNDERWATER POSITION — %s (%s) | Shortfall: KES %.2f | Recommendation: immediate partial settlement",
+						r.ID[:8], r.FarmerID, totalDebt-currentValue)})
+			} else {
+				a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogArbitration,
+					Message: fmt.Sprintf("  ✓  Near-threshold | %s (%s) | Surplus: KES %.2f | Farmer notified for manual action",
+						r.ID[:8], r.FarmerID, currentValue-totalDebt)})
+			}
+			reconciled++
+		}
 	}
 
+	if reconciled == 0 {
+		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogArbitration,
+			Message: "✅ Arbitration complete — all positions healthy"})
+	} else {
+		a.store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogArbitration,
+			Message: fmt.Sprintf("📋 Arbitration reviewed %d position(s) — check terminal for details", reconciled)})
+	}
+}
+
+// ---- Settlement Calculation (shared by agent + manual sell handler) ----------
+
+// calculateSettlement computes the full ledger for one receipt at a given price.
+func calculateSettlement(store *Store, receipt *ProduceReceipt, marketPrice float64) SettlementResult {
+	daysElapsed := time.Since(receipt.CreatedAt).Hours() / 24
+	grossRevenue := float64(receipt.QuantityBags) * marketPrice
+	platformFee := grossRevenue * 0.01 // 1% platform fee
+
+	storageFee := float64(receipt.QuantityBags) * receipt.HoldingCostPerBagMonth * (daysElapsed / 30)
+
+	var principal, interest float64
+	if loan, ok := store.GetLoanByReceipt(receipt.ID); ok {
+		principal = loan.PrincipalAmount
+		interest = loan.PrincipalAmount * loan.InterestRate * (daysElapsed / 365)
+	}
+
+	totalDebt := principal + interest + storageFee + platformFee
 	netProfit := grossRevenue - totalDebt
 	if netProfit < 0 {
-		netProfit = 0 // floor at zero — farmer always keeps the grain value
+		netProfit = 0
 	}
 
 	return SettlementResult{
 		ReceiptID:    receipt.ID,
 		FarmerID:     receipt.FarmerID,
+		SalePrice:    math.Round(marketPrice*100) / 100,
 		GrossRevenue: math.Round(grossRevenue*100) / 100,
+		Principal:    math.Round(principal*100) / 100,
+		Interest:     math.Round(interest*100) / 100,
+		StorageFee:   math.Round(storageFee*100) / 100,
+		PlatformFee:  math.Round(platformFee*100) / 100,
 		TotalDebt:    math.Round(totalDebt*100) / 100,
 		NetProfit:    math.Round(netProfit*100) / 100,
+		DaysElapsed:  math.Round(daysElapsed*10) / 10,
 	}
+}
+
+// logSettlementBreakdown emits the full ledger to the terminal log.
+func logSettlementBreakdown(store *Store, r SettlementResult) {
+	store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogTrigger,
+		Message: fmt.Sprintf("  ├─ Receipt %s | Farmer %s | %.0f bags × KES %.2f = Gross KES %.2f",
+			r.ReceiptID[:8], r.FarmerID, float64(0), r.SalePrice, r.GrossRevenue)})
+	store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogTrigger,
+		Message: fmt.Sprintf("  ├─ Deductions: Principal KES %.2f + Interest KES %.2f + Storage KES %.2f + Platform 1%% KES %.2f",
+			r.Principal, r.Interest, r.StorageFee, r.PlatformFee)})
+	store.AppendLog(AgentLogEntry{Timestamp: time.Now(), Level: LogTrigger,
+		Message: fmt.Sprintf("  └─ NET PROFIT: KES %.2f → farmer wallet", r.NetProfit)})
 }

@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
-import { Warehouse, TrendingUp, Activity, Smartphone } from 'lucide-react'
+import { Warehouse, TrendingUp, Activity, Smartphone, LogOut } from 'lucide-react'
 import WarehousePortal from './components/WarehousePortal'
 import FarmerDashboard from './components/FarmerDashboard'
 import LiveMonitor from './components/LiveMonitor'
 import USSDSimulator from './components/USSDSimulator'
+import LoginScreen from './components/LoginScreen'
+import { FarmerProvider, useFarmer } from './context/FarmerContext'
 import './App.css'
 
 type Tab = 'warehouse' | 'farmer' | 'monitor' | 'ussd'
@@ -35,11 +37,15 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode; description: string
   },
 ]
 
-export default function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('warehouse')
+  const { farmer, setFarmer } = useFarmer()
 
   return (
     <div className="app-layout">
+      {/* Show login overlay if not authenticated */}
+      {!farmer && <LoginScreen />}
+
       {/* ---- Header -------------------------------------------------------- */}
       <header className="app-header">
         <div className="header-brand">
@@ -49,9 +55,26 @@ export default function App() {
             <p className="brand-tagline">Agri-Fintech Warehouse Receipt & Lending Platform</p>
           </div>
         </div>
-        <div className="header-status">
-          <span className="status-dot status-live" />
-          <span className="status-label">Agent Active</span>
+        
+        <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+          {farmer && (
+            <div className="header-farmer" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Logged in as:</span>
+              <span style={{ fontWeight: 'bold', color: 'var(--color-gold-400)' }}>{farmer.full_name}</span>
+              <button 
+                onClick={() => setFarmer(null)} 
+                className="btn btn-outline" 
+                style={{ padding: '4px 8px', height: 'auto', fontSize: '0.7rem' }}
+                title="Logout"
+              >
+                <LogOut size={12} />
+              </button>
+            </div>
+          )}
+          <div className="header-status">
+            <span className="status-dot status-live" />
+            <span className="status-label">Agent Active</span>
+          </div>
         </div>
       </header>
 
@@ -86,5 +109,13 @@ export default function App() {
         <p>MazaoPlus &copy; 2025 — Built for Hack Day &bull; Go + React &bull; USSD for every farmer</p>
       </footer>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <FarmerProvider>
+      <AppContent />
+    </FarmerProvider>
   )
 }

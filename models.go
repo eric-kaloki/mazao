@@ -1,11 +1,12 @@
 // Package main — models.go
-// Pure data structures for MazaoPlus. No ORM, no DB tags.
-// Status transitions: AVAILABLE → LOCKED_COLLATERAL → SETTLED
+// All data structures for MazaoPlus Phase 3.
+// Status machine: AVAILABLE → LOCKED_COLLATERAL → SETTLED
 package main
 
 import "time"
 
-// ReceiptStatus represents the strict state machine for a produce receipt.
+// ---- Receipt State Machine ---------------------------------------------------
+
 type ReceiptStatus string
 
 const (
@@ -14,61 +15,136 @@ const (
 	StatusSettled          ReceiptStatus = "SETTLED"
 )
 
-// ProduceReceipt is the core financial asset — a tokenised warehouse deposit.
+// ProduceReceipt is the core financial asset.
 type ProduceReceipt struct {
 	ID                     string        `json:"id"`
-	FarmerID               string        `json:"farmer_id"`
+	FarmerID               string        `json:"farmer_id"`           // National ID
 	CommodityType          string        `json:"commodity_type"`
 	QuantityBags           int           `json:"quantity_bags"`
 	GradeInfo              string        `json:"grade_info"`
-	HoldingCostPerBagMonth float64       `json:"holding_cost_per_bag_month"` // KES 10 default
-	PriceAtDeposit         float64       `json:"price_at_deposit"`           // market price captured at warehouse entry time
-	DepositValueKES        float64       `json:"deposit_value_kes"`          // bags × PriceAtDeposit — the basis for loan calculation
+	HoldingCostPerBagMonth float64       `json:"holding_cost_per_bag_month"`
+	PriceAtDeposit         float64       `json:"price_at_deposit"`
+	DepositValueKES        float64       `json:"deposit_value_kes"`
+	AutoSellEnabled        bool          `json:"auto_sell_enabled"` // agent will settle when true
 	Status                 ReceiptStatus `json:"status"`
 	CreatedAt              time.Time     `json:"created_at"`
+	SettledAt              *time.Time    `json:"settled_at,omitempty"`
 }
 
-// Loan is an asset-backed credit advance issued against a locked receipt.
+// ---- Loan -------------------------------------------------------------------
+
+type LoanType string
+
+const (
+	LoanTypeReceiptBacked LoanType = "RECEIPT_BACKED"
+	LoanTypePreHarvest    LoanType = "PRE_HARVEST"
+	LoanTypeInputLoan     LoanType = "INPUT_LOAN"
+)
+
 type Loan struct {
 	ID              string    `json:"id"`
-	ReceiptID       string    `json:"receipt_id"`
+	ReceiptID       string    `json:"receipt_id,omitempty"`
 	FarmerID        string    `json:"farmer_id"`
-	PrincipalAmount float64   `json:"principal_amount"` // 60% of DepositValueKES — fixed at issuance, does NOT change
-	InterestRate    float64   `json:"interest_rate"`    // fixed 8% annual
+	LoanType        LoanType  `json:"loan_type"`
+	PrincipalAmount float64   `json:"principal_amount"`
+	InterestRate    float64   `json:"interest_rate"`
 	IsSettled       bool      `json:"is_settled"`
 	CreatedAt       time.Time `json:"created_at"`
+	SettledAt       *time.Time `json:"settled_at,omitempty"`
 }
 
-// MarketPrice holds the live simulated market price for a commodity.
-type MarketPrice struct {
+// ---- Farmer Profile ---------------------------------------------------------
+
+type CreditBand string
+
+const (
+	BandBronze   CreditBand = "BRONZE"
+	BandSilver   CreditBand = "SILVER"
+	BandGold     CreditBand = "GOLD"
+	BandPlatinum CreditBand = "PLATINUM"
+)
+
+// Farmer is a registered smallholder. NationalID is the primary key.
+type Farmer struct {
+	NationalID      string     `json:"national_id"`
+	FullName        string     `json:"full_name"`
+	PhoneNumber     string     `json:"phone_number"`
+	WalletBalance   float64    `json:"wallet_balance"`
+	CreditScore     int        `json:"credit_score"`     // 0–1000
+	CreditBand      CreditBand `json:"credit_band"`
+	RegisteredAt    time.Time  `json:"registered_at"`
+	LoansSettled    int        `json:"loans_settled"`
+	LoansDefaulted  int        `json:"loans_defaulted"`
+	TotalDisbursed  float64    `json:"total_disbursed"`  // total profit received
+}
+
+// WalletTx is a single wallet debit or credit event.
+type WalletTx struct {
+	ID          string    `json:"id"`
+	FarmerID    string    `json:"farmer_id"`
+	Type        string    `json:"type"`        // CREDIT | DEBIT
+	Amount      float64   `json:"amount"`
+	Description string    `json:"description"`
+	Timestamp   time.Time `json:"timestamp"`
+}
+
+// ---- Market -----------------------------------------------------------------
+
+// CommodityMarket holds live price data for one commodity.
+type CommodityMarket struct {
 	Commodity       string    `json:"commodity"`
-	CurrentPrice    float64   `json:"current_price"`    // KES per bag
-	TargetThreshold float64   `json:"target_threshold"` // KES 3500 — agent triggers above this
-	PriceHistory    []float64 `json:"price_history"`    // last 30 ticks for charting
+	CurrentPrice    float64   `json:"current_price"`
+	PriceMin        float64   `json:"price_min"`
+	PriceMax        float64   `json:"price_max"`
+	TargetThreshold float64   `json:"target_threshold"`
+	PriceHistory    []float64 `json:"price_history"` // last 30 ticks
+	PhaseDeg        float64   `json:"phase_deg"`     // internal sine phase
+	Volatility      float64   `json:"volatility"`    // noise factor 0.01-0.08
 	Timestamp       time.Time `json:"timestamp"`
 }
 
-// LogLevel classifies an agent log entry for frontend colour-coding.
+// MarketPrice is the legacy alias for the chart polling endpoint (Maize only).
+// Kept for backwards-compat with LiveMonitor.
+type MarketPrice = CommodityMarket
+
+// ---- Logging ----------------------------------------------------------------
+
 type LogLevel string
 
 const (
-	LogInfo    LogLevel = "INFO"
-	LogWarn    LogLevel = "WARN"
-	LogTrigger LogLevel = "TRIGGER"
-	LogPayout  LogLevel = "PAYOUT"
-	LogError   LogLevel = "ERROR"
+	LogInfo         LogLevel = "INFO"
+	LogWarn         LogLevel = "WARN"
+	LogTrigger      LogLevel = "TRIGGER"
+	LogPayout       LogLevel = "PAYOUT"
+	LogArbitration  LogLevel = "ARBITRATION"
+	LogError        LogLevel = "ERROR"
 )
 
-// AgentLogEntry is a single line emitted by the autonomous background agent.
 type AgentLogEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 	Level     LogLevel  `json:"level"`
 	Message   string    `json:"message"`
 }
 
+// ---- Settlement Ledger ------------------------------------------------------
+
+// SettlementResult holds a full accounting breakdown.
+type SettlementResult struct {
+	ReceiptID    string  `json:"receipt_id"`
+	FarmerID     string  `json:"farmer_id"`
+	SalePrice    float64 `json:"sale_price"`    // KES per bag at time of sale
+	GrossRevenue float64 `json:"gross_revenue"` // Bags × SalePrice
+	Principal    float64 `json:"principal"`
+	Interest     float64 `json:"interest"`
+	StorageFee   float64 `json:"storage_fee"`
+	PlatformFee  float64 `json:"platform_fee"`  // 1% of gross
+	TotalDebt    float64 `json:"total_debt"`
+	NetProfit    float64 `json:"net_profit"`
+	DaysElapsed  float64 `json:"days_elapsed"`
+}
+
 // ---- Request / Response DTOs ------------------------------------------------
 
-// ReceiptCreateRequest is the payload from the Warehouse Portal form.
 type ReceiptCreateRequest struct {
 	FarmerID      string `json:"farmer_id"      binding:"required"`
 	CommodityType string `json:"commodity_type" binding:"required"`
@@ -76,42 +152,62 @@ type ReceiptCreateRequest struct {
 	GradeInfo     string `json:"grade_info"`
 }
 
-// LoanApplicationRequest triggers a 60% LTV advance against a specific receipt.
-// The loan amount is calculated from PriceAtDeposit — NOT the current market price.
 type LoanApplicationRequest struct {
 	ReceiptID string `json:"receipt_id" binding:"required"`
 	FarmerID  string `json:"farmer_id"  binding:"required"`
 }
 
-// LoanApplicationResponse is returned after a successful loan issuance.
 type LoanApplicationResponse struct {
 	Loan            Loan    `json:"loan"`
 	DisbursedKES    float64 `json:"disbursed_kes"`
-	DepositValueKES float64 `json:"deposit_value_kes"`  // value at time of warehouse entry
+	DepositValueKES float64 `json:"deposit_value_kes"`
 	LTVPercent      int     `json:"ltv_percent"`
 }
 
-// SettlementResult holds per-receipt settlement calculation details.
-type SettlementResult struct {
-	ReceiptID    string  `json:"receipt_id"`
-	FarmerID     string  `json:"farmer_id"`
-	GrossRevenue float64 `json:"gross_revenue"`
-	TotalDebt    float64 `json:"total_debt"`
-	NetProfit    float64 `json:"net_profit"`
+// FarmerLoginRequest — enter National ID to authenticate.
+type FarmerLoginRequest struct {
+	NationalID  string `json:"national_id"  binding:"required"`
+	FullName    string `json:"full_name"`
+	PhoneNumber string `json:"phone_number"`
 }
 
-// ---- USSD DTOs --------------------------------------------------------------
+// ManualSellRequest — farmer-initiated settlement at current market price.
+type ManualSellRequest struct {
+	FarmerID string `json:"farmer_id" binding:"required"`
+}
 
-// USSDRequest is the payload sent by the USSD simulator on each keypress.
+// AutoSellToggleRequest — toggle per-receipt automatic settlement.
+type AutoSellToggleRequest struct {
+	FarmerID string `json:"farmer_id" binding:"required"`
+	Enabled  bool   `json:"enabled"`
+}
+
+// InputLoanRequest — apply for a credit-score-gated non-receipt loan.
+type InputLoanRequest struct {
+	FarmerID    string   `json:"farmer_id"    binding:"required"`
+	LoanType    LoanType `json:"loan_type"    binding:"required"`
+	AmountKES   float64  `json:"amount_kes"   binding:"required,min=1000"`
+	Description string   `json:"description"`
+}
+
+// InputLoanResponse is the response for input/pre-harvest loan applications.
+type InputLoanResponse struct {
+	Loan          Loan    `json:"loan"`
+	DisbursedKES  float64 `json:"disbursed_kes"`
+	CreditScore   int     `json:"credit_score"`
+	CreditBand    CreditBand `json:"credit_band"`
+	MaxAllowedKES float64 `json:"max_allowed_kes"`
+}
+
+// ---- USSD -------------------------------------------------------------------
+
 type USSDRequest struct {
 	SessionID string `json:"session_id" binding:"required"`
 	FarmerID  string `json:"farmer_id"`
-	Text      string `json:"text"` // accumulated input e.g. "1*F001"
+	Text      string `json:"text"`
 }
 
-// USSDResponse is returned to the simulator to update the screen.
 type USSDResponse struct {
-	// Type is either "CON" (session continues) or "END" (session terminates)
-	Type    string `json:"type"`
+	Type    string `json:"type"`    // CON | END
 	Message string `json:"message"`
 }

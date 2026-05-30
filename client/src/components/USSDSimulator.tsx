@@ -269,6 +269,14 @@ export default function USSDSimulator() {
                   <div className="flow-node">4 → Loan Balance</div>
                   <div className="flow-desc">Enter ID → total owed incl. interest + fees</div>
                 </div>
+                <div className="flow-branch">
+                  <div className="flow-node">5 → Auto-Sell Settings</div>
+                  <div className="flow-desc">Toggle agent auto-sell for locked receipts</div>
+                </div>
+                <div className="flow-branch">
+                  <div className="flow-node">6 → Credit Profile</div>
+                  <div className="flow-desc">View score and eligible loan products</div>
+                </div>
               </div>
             </div>
 

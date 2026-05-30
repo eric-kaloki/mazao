@@ -1,6 +1,5 @@
 // Package main — handlers.go
-// Thin Gin HTTP handlers. Each handler delegates immediately to the store —
-// no business logic lives here beyond request parsing and response shaping.
+// Thin Gin HTTP handlers for Phase 3.
 package main
 
 import (
@@ -13,53 +12,78 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Handlers bundles the store dependency for all HTTP handler methods.
 type Handlers struct {
 	store *Store
 }
 
-// NewHandlers constructs a Handlers instance.
 func NewHandlers(store *Store) *Handlers {
 	return &Handlers{store: store}
 }
 
+// ---- Farmer Profile & Wallet Handlers ----------------------------------------
+
+func (h *Handlers) FarmerLoginHandler(c *gin.Context) {
+	var req FarmerLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	farmer := h.store.RegisterOrGetFarmer(req)
+	c.JSON(http.StatusOK, farmer)
+}
+
+func (h *Handlers) GetFarmerProfileHandler(c *gin.Context) {
+	id := c.Param("id")
+	farmer, ok := h.store.GetFarmer(id)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "farmer not found"})
+		return
+	}
+	c.JSON(http.StatusOK, farmer)
+}
+
+func (h *Handlers) GetFarmerWalletHandler(c *gin.Context) {
+	id := c.Param("id")
+	farmer, ok := h.store.GetFarmer(id)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "farmer not found"})
+		return
+	}
+	history := h.store.GetWalletHistory(id)
+	c.JSON(http.StatusOK, gin.H{
+		"balance":      farmer.WalletBalance,
+		"transactions": history,
+	})
+}
+
 // ---- Receipt Handlers --------------------------------------------------------
 
-// CreateReceiptHandler handles POST /api/v1/receipts
-// Warehouse manager logs an incoming cereal deposit.
-// PriceAtDeposit is captured from the live market price at the moment of entry.
 func (h *Handlers) CreateReceiptHandler(c *gin.Context) {
 	var req ReceiptCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	if req.GradeInfo == "" {
 		req.GradeInfo = "Grade 1"
 	}
 
-	// Capture the market price NOW — this becomes the frozen deposit price
-	price := h.store.GetMarketPrice()
-	receipt := h.store.CreateReceipt(req, price.CurrentPrice)
+	mkt, ok := h.store.GetCommodityPrice(req.CommodityType)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported commodity type"})
+		return
+	}
+
+	receipt := h.store.CreateReceipt(req, mkt.CurrentPrice)
 
 	h.store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogInfo,
-		Message: fmt.Sprintf(
-			"🌽 Receipt minted | ID: %s | Farmer: %s | %d bags %s | Entry price: KES %.2f/bag | Deposit value: KES %.2f",
-			receipt.ID[:8], receipt.FarmerID, receipt.QuantityBags,
-			receipt.CommodityType, receipt.PriceAtDeposit, receipt.DepositValueKES,
-		),
+		Timestamp: time.Now(), Level: LogInfo,
+		Message: fmt.Sprintf("🌽 Receipt minted | ID: %s | Farmer: %s | %d bags %s | Entry: KES %.2f/bag",
+			receipt.ID[:8], receipt.FarmerID, receipt.QuantityBags, receipt.CommodityType, receipt.PriceAtDeposit),
 	})
-
 	c.JSON(http.StatusCreated, receipt)
 }
 
-// GetFarmerReceiptsHandler handles GET /api/v1/receipts/farmer/:id
-// Returns all receipts for a given farmer.
-// AVAILABLE receipts are enriched with the live market price for display.
-// LOCKED receipts show their fixed loan amount — NOT recalculated from live price.
 func (h *Handlers) GetFarmerReceiptsHandler(c *gin.Context) {
 	rawID := c.Param("id")
 	farmerID := strings.ToUpper(strings.TrimSpace(rawID))
@@ -69,32 +93,26 @@ func (h *Handlers) GetFarmerReceiptsHandler(c *gin.Context) {
 	}
 
 	receipts := h.store.GetReceiptsByFarmer(farmerID)
-	currentMarket := h.store.GetMarketPrice()
 
-	// EnrichedReceipt augments the base receipt with computed financial fields.
 	type EnrichedReceipt struct {
 		*ProduceReceipt
-		// CurrentMarketValueKES: bags × live price (informational only for AVAILABLE)
 		CurrentMarketValueKES float64 `json:"current_market_value_kes"`
-		// MaxLoanKES: 60% of DepositValueKES — the fixed, entry-price-based loan ceiling
-		MaxLoanKES float64 `json:"max_loan_kes"`
-		// CurrentPriceKES: live market price (for the chart/display)
-		CurrentPriceKES float64 `json:"current_price_kes"`
-		// ActiveLoan: populated if a loan exists and is not settled
-		ActiveLoan *Loan `json:"active_loan,omitempty"`
+		MaxLoanKES            float64 `json:"max_loan_kes"`
+		CurrentPriceKES       float64 `json:"current_price_kes"`
+		ActiveLoan            *Loan   `json:"active_loan,omitempty"`
 	}
 
 	enriched := make([]EnrichedReceipt, 0, len(receipts))
 	for _, r := range receipts {
-		liveMarketVal := float64(r.QuantityBags) * currentMarket.CurrentPrice
+		mkt, _ := h.store.GetCommodityPrice(r.CommodityType)
+		liveVal := float64(r.QuantityBags) * mkt.CurrentPrice
 		loan, _ := h.store.GetLoanByReceipt(r.ID)
 		enriched = append(enriched, EnrichedReceipt{
 			ProduceReceipt:        r,
-			CurrentMarketValueKES: liveMarketVal,
-			// MaxLoanKES is always derived from the frozen deposit value, never live price
-			MaxLoanKES:      r.DepositValueKES * 0.60,
-			CurrentPriceKES: currentMarket.CurrentPrice,
-			ActiveLoan:      loan,
+			CurrentMarketValueKES: liveVal,
+			MaxLoanKES:            r.DepositValueKES * 0.60,
+			CurrentPriceKES:       mkt.CurrentPrice,
+			ActiveLoan:            loan,
 		})
 	}
 
@@ -105,12 +123,98 @@ func (h *Handlers) GetFarmerReceiptsHandler(c *gin.Context) {
 	})
 }
 
+// ManualSellHandler handles POST /api/v1/receipts/:id/sell
+// Farmer initiates manual settlement at current market price.
+func (h *Handlers) ManualSellHandler(c *gin.Context) {
+	var req ManualSellRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	receiptID := c.Param("id")
+	receipt, ok := h.store.GetReceipt(receiptID)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "receipt not found"})
+		return
+	}
+
+	if receipt.FarmerID != normalizeFarmerID(req.FarmerID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "receipt does not belong to farmer"})
+		return
+	}
+
+	if receipt.Status != StatusLockedCollateral {
+		c.JSON(http.StatusConflict, gin.H{"error": "can only sell LOCKED_COLLATERAL receipts"})
+		return
+	}
+
+	mkt, ok := h.store.GetCommodityPrice(receipt.CommodityType)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "market data unavailable"})
+		return
+	}
+
+	h.store.AppendLog(AgentLogEntry{
+		Timestamp: time.Now(), Level: LogInfo,
+		Message: fmt.Sprintf("👨‍🌾 Farmer-initiated manual sell | Receipt: %s | Farmer: %s | Price: KES %.2f",
+			receipt.ID[:8], receipt.FarmerID, mkt.CurrentPrice),
+	})
+
+	result := calculateSettlement(h.store, receipt, mkt.CurrentPrice)
+	logSettlementBreakdown(h.store, result)
+
+	if err := h.store.SettleReceiptWithTimestamp(receipt.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if loan, ok := h.store.GetLoanByReceipt(receipt.ID); ok {
+		h.store.SettleLoanWithTimestamp(loan.ID)
+	}
+
+	h.store.CreditFarmerWallet(receipt.FarmerID,
+		fmt.Sprintf("Manual sell — %s — %d bags × KES %.2f", receipt.CommodityType, receipt.QuantityBags, mkt.CurrentPrice),
+		result.NetProfit)
+	h.store.IncrementLoansSettled(receipt.FarmerID)
+	h.store.RecalculateCreditScore(receipt.FarmerID)
+
+	c.JSON(http.StatusOK, result)
+}
+
+// ToggleAutoSellHandler handles PATCH /api/v1/receipts/:id/autosell
+func (h *Handlers) ToggleAutoSellHandler(c *gin.Context) {
+	var req AutoSellToggleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	receiptID := c.Param("id")
+	if err := h.store.ToggleAutoSell(receiptID, req.FarmerID, req.Enabled); err != nil {
+		status := http.StatusConflict
+		if strings.Contains(err.Error(), "not found") {
+			status = http.StatusNotFound
+		} else if strings.Contains(err.Error(), "belong") {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	action := "DISABLED 🛑"
+	if req.Enabled {
+		action = "ENABLED 🟢"
+	}
+	h.store.AppendLog(AgentLogEntry{
+		Timestamp: time.Now(), Level: LogInfo,
+		Message: fmt.Sprintf("⚙️ Auto-sell %s for Receipt %s by Farmer %s", action, receiptID[:8], req.FarmerID),
+	})
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "auto_sell_enabled": req.Enabled})
+}
+
 // ---- Loan Handlers -----------------------------------------------------------
 
-// ApplyForLoanHandler handles POST /api/v1/loans/apply
-// Issues a 60% LTV micro-loan against a receipt's DEPOSIT VALUE (frozen price).
-// The loan amount is stable — it does not change as the market moves.
-// Uses AtomicLockAndLoan to prevent duplicate applications under concurrency.
 func (h *Handlers) ApplyForLoanHandler(c *gin.Context) {
 	var req LoanApplicationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -118,54 +222,23 @@ func (h *Handlers) ApplyForLoanHandler(c *gin.Context) {
 		return
 	}
 
-	req.ReceiptID = strings.TrimSpace(req.ReceiptID)
-	req.FarmerID = strings.TrimSpace(req.FarmerID)
-
-	if req.ReceiptID == "" || req.FarmerID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "receipt_id and farmer_id are required"})
-		return
-	}
-
-	// Fetch receipt to compute principal from deposit value
 	receipt, ok := h.store.GetReceipt(req.ReceiptID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "receipt not found"})
 		return
 	}
 
-	// Loan is 60% of the value at entry time (PriceAtDeposit × Bags).
-	// This is intentionally NOT the current market price.
 	principal := receipt.DepositValueKES * 0.60
-
-	// AtomicLockAndLoan performs the ownership check, status check, duplicate-loan
-	// check, state transition, and loan creation under a single mutex — race-safe.
 	loan, err := h.store.AtomicLockAndLoan(req.ReceiptID, req.FarmerID, principal)
 	if err != nil {
-		status := http.StatusConflict
-		if strings.Contains(err.Error(), "not found") {
-			status = http.StatusNotFound
-		} else if strings.Contains(err.Error(), "does not belong") {
-			status = http.StatusForbidden
-		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
 
 	h.store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogInfo,
-		Message: fmt.Sprintf(
-			"💰 LOAN ISSUED | Farmer: %s | Receipt: %s | Deposit value: KES %.2f | Principal (60%% LTV): KES %.2f",
-			strings.ToUpper(req.FarmerID), req.ReceiptID[:8], receipt.DepositValueKES, principal,
-		),
-	})
-	h.store.AppendLog(AgentLogEntry{
-		Timestamp: time.Now(),
-		Level:     LogPayout,
-		Message: fmt.Sprintf(
-			"💸 M-PESA B2C | Farmer: %s | KES %.2f | Basis: entry price KES %.2f/bag | Status: INSTANT_CREDIT_APPLIED",
-			strings.ToUpper(req.FarmerID), principal, receipt.PriceAtDeposit,
-		),
+		Timestamp: time.Now(), Level: LogInfo,
+		Message: fmt.Sprintf("💰 RECEIPT LOAN ISSUED | Farmer: %s | Principal: KES %.2f",
+			normalizeFarmerID(req.FarmerID), principal),
 	})
 
 	c.JSON(http.StatusCreated, LoanApplicationResponse{
@@ -176,28 +249,70 @@ func (h *Handlers) ApplyForLoanHandler(c *gin.Context) {
 	})
 }
 
-// ---- Market Status Handler ---------------------------------------------------
+// InputLoanHandler handles POST /api/v1/loans/input-loan
+// Issues credit-score-gated unsecured loans.
+func (h *Handlers) InputLoanHandler(c *gin.Context) {
+	var req InputLoanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-// GetMarketStatusHandler handles GET /api/v1/market/status
+	farmer, ok := h.store.GetFarmer(req.FarmerID)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "farmer not found"})
+		return
+	}
+
+	_, maxAllowed := creditBandFromScore(farmer.CreditScore)
+	if req.AmountKES > maxAllowed {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":           fmt.Sprintf("requested amount exceeds credit limit for band %s", farmer.CreditBand),
+			"max_allowed_kes": maxAllowed,
+		})
+		return
+	}
+	if req.AmountKES <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid loan amount"})
+		return
+	}
+
+	loan := h.store.CreateInputLoan(req.FarmerID, req.LoanType, req.AmountKES)
+
+	h.store.AppendLog(AgentLogEntry{
+		Timestamp: time.Now(), Level: LogInfo,
+		Message: fmt.Sprintf("🌱 UNSECURED %s ISSUED | Farmer: %s | Amount: KES %.2f | Band: %s",
+			req.LoanType, farmer.NationalID, req.AmountKES, farmer.CreditBand),
+	})
+
+	c.JSON(http.StatusCreated, InputLoanResponse{
+		Loan:          *loan,
+		DisbursedKES:  req.AmountKES,
+		CreditScore:   farmer.CreditScore,
+		CreditBand:    farmer.CreditBand,
+		MaxAllowedKES: maxAllowed,
+	})
+}
+
+// ---- Market Status Handlers --------------------------------------------------
+
 func (h *Handlers) GetMarketStatusHandler(c *gin.Context) {
-	price := h.store.GetMarketPrice()
-	c.JSON(http.StatusOK, price)
+	c.JSON(http.StatusOK, h.store.GetMarketPrice()) // legacy, returns Maize
+}
+
+func (h *Handlers) GetAllMarketPricesHandler(c *gin.Context) {
+	prices := h.store.GetAllMarketPrices()
+	c.JSON(http.StatusOK, prices)
 }
 
 // ---- SSE Log Stream Handler --------------------------------------------------
 
-// StreamLogsHandler handles GET /api/v1/logs/stream
-// FIX: Registers the listener FIRST, THEN replays history.
-// This ensures no entries are lost between registration and replay.
-// Entries emitted during replay are buffered in the per-client channel (cap=64)
-// and delivered immediately after history finishes — preserving order.
 func (h *Handlers) StreamLogsHandler(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
-	// Register listener BEFORE fetching history (fixes replay race condition)
 	clientChan := make(chan AgentLogEntry, 64)
 	h.store.AddLogListener(clientChan)
 	defer func() {
@@ -205,7 +320,6 @@ func (h *Handlers) StreamLogsHandler(c *gin.Context) {
 		close(clientChan)
 	}()
 
-	// Replay historical logs — any new entries during replay are queued in clientChan
 	historical := h.store.GetLogs()
 	for _, entry := range historical {
 		data, _ := json.Marshal(entry)
@@ -213,7 +327,6 @@ func (h *Handlers) StreamLogsHandler(c *gin.Context) {
 	}
 	c.Writer.Flush()
 
-	// Stream live entries
 	clientGone := c.Request.Context().Done()
 	for {
 		select {
@@ -239,86 +352,57 @@ func (h *Handlers) StreamLogsHandler(c *gin.Context) {
 
 // ---- USSD Handler -----------------------------------------------------------
 
-// USSDHandler handles POST /api/v1/ussd
-// Implements a simple text-based USSD state machine for feature phone farmers.
-// The `text` field accumulates input across the session, separated by `*`.
-// e.g. "" → main menu, "1" → receipt flow, "1*F001" → F001's receipts
 func (h *Handlers) USSDHandler(c *gin.Context) {
 	var req USSDRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	resp := h.processUSSD(req)
 	c.JSON(http.StatusOK, resp)
 }
 
-// processUSSD implements the menu state machine.
 func (h *Handlers) processUSSD(req USSDRequest) USSDResponse {
 	parts := strings.Split(req.Text, "*")
-	// Filter empty parts from splitting "" or trailing "*"
 	var levels []string
 	for _, p := range parts {
 		if strings.TrimSpace(p) != "" {
 			levels = append(levels, strings.TrimSpace(p))
 		}
 	}
-
 	depth := len(levels)
 
-	// ---- Level 0: Main menu ------------------------------------------------
 	if depth == 0 {
 		return USSDResponse{
 			Type:    "CON",
-			Message: "CON MazaoPlus Kilimo\n\n1. My Receipts\n2. Get Cash Advance\n3. Market Price\n4. Loan Balance\n\n0. Exit",
+			Message: "CON MazaoPlus Kilimo\n\n1. My Receipts\n2. Get Cash Advance\n3. Market Price\n4. Loan Balance\n5. Auto-Sell Settings\n6. Credit Score\n\n0. Exit",
 		}
 	}
 
-	// ---- Level 1: Route by main menu selection -----------------------------
 	switch levels[0] {
-
-	// ---- Branch 1: My Receipts ---------------------------------------------
-	case "1":
+	case "1": // Receipts
 		if depth == 1 {
-			return USSDResponse{Type: "CON", Message: "CON My Receipts\n\nEnter Farmer ID:\n(e.g. F001)"}
+			return USSDResponse{Type: "CON", Message: "CON My Receipts\n\nEnter National ID:"}
 		}
-		farmerID := strings.ToUpper(levels[1])
+		farmerID := levels[1]
 		receipts := h.store.GetReceiptsByFarmer(farmerID)
 		if len(receipts) == 0 {
-			return USSDResponse{
-				Type:    "END",
-				Message: fmt.Sprintf("END No receipts found\nfor farmer %s.\n\nVisit your cooperative\nwarehouse to deposit.", farmerID),
-			}
+			return USSDResponse{Type: "END", Message: "END No receipts found."}
 		}
-		msg := fmt.Sprintf("CON Receipts for %s:\n\n", farmerID)
+		msg := "CON Receipts:\n\n"
 		for i, r := range receipts {
-			statusIcon := map[ReceiptStatus]string{
-				StatusAvailable:        "✓",
-				StatusLockedCollateral: "🔒",
-				StatusSettled:          "✅",
-			}[r.Status]
-			msg += fmt.Sprintf("%d. %s | %d bags %s\n   %s KES %.0f/bag\n",
-				i+1, statusIcon, r.QuantityBags, r.CommodityType, r.Status, r.PriceAtDeposit)
+			status := map[ReceiptStatus]string{StatusAvailable: "✓", StatusLockedCollateral: "🔒", StatusSettled: "✅"}[r.Status]
+			msg += fmt.Sprintf("%d. %s %d bags %s\n", i+1, status, r.QuantityBags, r.CommodityType)
 		}
-		msg += "\n0. Back"
-		return USSDResponse{Type: "CON", Message: msg}
+		return USSDResponse{Type: "CON", Message: msg + "\n0. Back"}
 
-	// ---- Branch 2: Get Cash Advance ----------------------------------------
-	case "2":
+	case "2": // Cash Advance
 		if depth == 1 {
-			return USSDResponse{Type: "CON", Message: "CON Cash Advance\n\nEnter your Farmer ID:\n(e.g. F001)"}
+			return USSDResponse{Type: "CON", Message: "CON Cash Advance\n\nEnter National ID:"}
 		}
-		farmerID := strings.ToUpper(levels[1])
 		if depth == 2 {
+			farmerID := levels[1]
 			receipts := h.store.GetReceiptsByFarmer(farmerID)
-			if len(receipts) == 0 {
-				return USSDResponse{
-					Type:    "END",
-					Message: fmt.Sprintf("END No receipts found\nfor %s.\n\nDeposit grain at your\ncooperative first.", farmerID),
-				}
-			}
-			// Find first AVAILABLE receipt
 			var available *ProduceReceipt
 			for _, r := range receipts {
 				if r.Status == StatusAvailable {
@@ -327,27 +411,16 @@ func (h *Handlers) processUSSD(req USSDRequest) USSDResponse {
 				}
 			}
 			if available == nil {
-				return USSDResponse{
-					Type:    "END",
-					Message: "END No available receipts.\n\nAll your grain is\nalready used as\ncollateral.",
-				}
+				return USSDResponse{Type: "END", Message: "END No available receipts."}
 			}
 			loanAmt := available.DepositValueKES * 0.60
-			return USSDResponse{
-				Type: "CON",
-				Message: fmt.Sprintf(
-					"CON Cash Advance\n\n%d bags %s\nEntry: KES %.0f/bag\nDeposit value: KES %.0f\n\nYou can receive:\nKES %.0f (60%% LTV)\n\n1. Confirm & Apply\n0. Cancel",
-					available.QuantityBags, available.CommodityType,
-					available.PriceAtDeposit, available.DepositValueKES, loanAmt,
-				),
-			}
+			return USSDResponse{Type: "CON", Message: fmt.Sprintf("CON Advance\n\nReceive KES %.0f (60%% LTV)\n\n1. Confirm\n0. Cancel", loanAmt)}
 		}
 		if depth == 3 {
 			if levels[2] != "1" {
-				return USSDResponse{Type: "END", Message: "END Loan cancelled.\n\nThank you for using\nMazaoPlus."}
+				return USSDResponse{Type: "END", Message: "END Cancelled."}
 			}
-			// Execute the loan application
-			farmerID = strings.ToUpper(levels[1])
+			farmerID := levels[1]
 			receipts := h.store.GetReceiptsByFarmer(farmerID)
 			var available *ProduceReceipt
 			for _, r := range receipts {
@@ -357,99 +430,95 @@ func (h *Handlers) processUSSD(req USSDRequest) USSDResponse {
 				}
 			}
 			if available == nil {
-				return USSDResponse{Type: "END", Message: "END Receipt no longer\navailable. Try again."}
+				return USSDResponse{Type: "END", Message: "END Receipt unavailable."}
 			}
-			principal := available.DepositValueKES * 0.60
-			_, err := h.store.AtomicLockAndLoan(available.ID, farmerID, principal)
+			_, err := h.store.AtomicLockAndLoan(available.ID, farmerID, available.DepositValueKES*0.60)
 			if err != nil {
-				return USSDResponse{
-					Type:    "END",
-					Message: fmt.Sprintf("END Error: %s\n\nPlease try again or\nvisit your cooperative.", err.Error()),
+				return USSDResponse{Type: "END", Message: "END Error."}
+			}
+			return USSDResponse{Type: "END", Message: "END SUCCESS! Disbursed to M-Pesa."}
+		}
+
+	case "3": // Market Price
+		prices := h.store.GetAllMarketPrices()
+		msg := "END Market Prices\n\n"
+		for _, m := range prices {
+			if m.Commodity == "Maize" || m.Commodity == "Wheat" {
+				msg += fmt.Sprintf("%s: KES %.0f\n(Target: %.0f)\n", m.Commodity, m.CurrentPrice, m.TargetThreshold)
+			}
+		}
+		return USSDResponse{Type: "END", Message: msg}
+
+	case "4": // Loan Balance
+		if depth == 1 {
+			return USSDResponse{Type: "CON", Message: "CON Loan Balance\n\nEnter National ID:"}
+		}
+		farmerID := levels[1]
+		loans := h.store.GetActiveLoansByFarmer(farmerID)
+		if len(loans) == 0 {
+			return USSDResponse{Type: "END", Message: "END No active loans."}
+		}
+		total := 0.0
+		for _, l := range loans {
+			total += l.PrincipalAmount
+		}
+		return USSDResponse{Type: "END", Message: fmt.Sprintf("END Total Owed:\nKES %.2f", total)}
+
+	case "5": // Auto-Sell Settings
+		if depth == 1 {
+			return USSDResponse{Type: "CON", Message: "CON Auto-Sell Settings\n\nEnter National ID:"}
+		}
+		farmerID := levels[1]
+		if depth == 2 {
+			receipts := h.store.GetReceiptsByFarmer(farmerID)
+			var locked *ProduceReceipt
+			for _, r := range receipts {
+				if r.Status == StatusLockedCollateral {
+					locked = r
+					break
 				}
 			}
-			h.store.AppendLog(AgentLogEntry{
-				Timestamp: time.Now(),
-				Level:     LogPayout,
-				Message:   fmt.Sprintf("📱 USSD LOAN | Farmer: %s | KES %.2f | Receipt: %s | Status: DISBURSED", farmerID, principal, available.ID[:8]),
-			})
-			return USSDResponse{
-				Type: "END",
-				Message: fmt.Sprintf(
-					"END SUCCESS!\n\nKES %.0f sent to\nyour M-Pesa.\n\nReceipt: %s...\nlocked as collateral.\n\nAgent will auto-sell\nat peak price.",
-					principal, available.ID[:6],
-				),
+			if locked == nil {
+				return USSDResponse{Type: "END", Message: "END No locked receipts."}
+			}
+			statusStr := "ENABLED"
+			if !locked.AutoSellEnabled {
+				statusStr = "DISABLED"
+			}
+			return USSDResponse{Type: "CON", Message: fmt.Sprintf("CON Auto-Sell: %s\nReceipt: %s\n\n1. Toggle Auto-Sell\n0. Back", statusStr, locked.ID[:6])}
+		}
+		if depth == 3 {
+			if levels[2] == "1" {
+				receipts := h.store.GetReceiptsByFarmer(farmerID)
+				for _, r := range receipts {
+					if r.Status == StatusLockedCollateral {
+						h.store.ToggleAutoSell(r.ID, farmerID, !r.AutoSellEnabled)
+						return USSDResponse{Type: "END", Message: "END Settings updated."}
+					}
+				}
 			}
 		}
 
-	// ---- Branch 3: Market Price --------------------------------------------
-	case "3":
-		market := h.store.GetMarketPrice()
-		diff := market.TargetThreshold - market.CurrentPrice
-		var statusLine string
-		if diff <= 0 {
-			statusLine = "ABOVE THRESHOLD!\nAgent settling now."
-		} else {
-			statusLine = fmt.Sprintf("KES %.0f below target.", diff)
-		}
-		return USSDResponse{
-			Type: "END",
-			Message: fmt.Sprintf(
-				"END Maize Market Price\n\nCurrent: KES %.2f/bag\nTarget:  KES %.0f/bag\n\n%s\n\nMazaoPlus monitors\nprices 24/7.",
-				market.CurrentPrice, market.TargetThreshold, statusLine,
-			),
-		}
-
-	// ---- Branch 4: Loan Balance --------------------------------------------
-	case "4":
+	case "6": // Credit Score
 		if depth == 1 {
-			return USSDResponse{Type: "CON", Message: "CON Loan Balance\n\nEnter your Farmer ID:\n(e.g. F001)"}
+			return USSDResponse{Type: "CON", Message: "CON Credit Score\n\nEnter National ID:"}
 		}
-		farmerID := strings.ToUpper(levels[1])
-		receipts := h.store.GetReceiptsByFarmer(farmerID)
-		var totalOwed float64
-		loanCount := 0
-		for _, r := range receipts {
-			if loan, ok := h.store.GetLoanByReceipt(r.ID); ok {
-				daysElapsed := time.Since(loan.CreatedAt).Hours() / 24
-				interest := loan.PrincipalAmount * loan.InterestRate * (daysElapsed / 365)
-				storageFee := float64(r.QuantityBags) * r.HoldingCostPerBagMonth * (daysElapsed / 30)
-				totalOwed += loan.PrincipalAmount + interest + storageFee
-				loanCount++
-			}
+		farmerID := levels[1]
+		farmer, ok := h.store.GetFarmer(farmerID)
+		if !ok {
+			return USSDResponse{Type: "END", Message: "END Farmer not found."}
 		}
-		if loanCount == 0 {
-			return USSDResponse{
-				Type:    "END",
-				Message: fmt.Sprintf("END No active loans\nfor farmer %s.\n\nYour receipts are\navailable for borrowing.", farmerID),
-			}
-		}
-		return USSDResponse{
-			Type: "END",
-			Message: fmt.Sprintf(
-				"END Loan Summary\nFarmer: %s\n\nActive loans: %d\nTotal owed:\nKES %.2f\n\n(incl. interest &\nstorage fees)",
-				farmerID, loanCount, totalOwed,
-			),
-		}
+		return USSDResponse{Type: "END", Message: fmt.Sprintf("END Score: %d\nBand: %s\nSettled: %d", farmer.CreditScore, farmer.CreditBand, farmer.LoansSettled)}
 
-	// ---- Exit --------------------------------------------------------------
 	case "0":
-		return USSDResponse{Type: "END", Message: "END Thank you for using\nMazaoPlus Kilimo.\n\nEmpowering farmers\nwith fair prices."}
+		return USSDResponse{Type: "END", Message: "END Goodbye."}
 	}
 
-	// Fallback — unknown input
-	return USSDResponse{
-		Type:    "CON",
-		Message: "CON Invalid option.\n\nPress * to go back\nor 0 to exit.",
-	}
+	return USSDResponse{Type: "CON", Message: "CON Invalid option.\n0. Back"}
 }
 
-// ---- Health Check ------------------------------------------------------------
+// ---- Health -----------------------------------------------------------------
 
-// HealthHandler handles GET /api/v1/health
 func (h *Handlers) HealthHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "ok",
-		"service":   "MazaoPlus",
-		"timestamp": time.Now().Format(time.RFC3339),
-	})
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "MazaoPlus"})
 }

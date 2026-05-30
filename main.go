@@ -55,20 +55,27 @@ func main() {
 	{
 		v1.GET("/health", handlers.HealthHandler)
 
+		// Farmers
+		v1.POST("/farmers/login", handlers.FarmerLoginHandler)
+		v1.GET("/farmers/:id/profile", handlers.GetFarmerProfileHandler)
+		v1.GET("/farmers/:id/wallet", handlers.GetFarmerWalletHandler)
+
 		// Receipts
 		v1.POST("/receipts", handlers.CreateReceiptHandler)
 		v1.GET("/receipts/farmer/:id", handlers.GetFarmerReceiptsHandler)
+		v1.POST("/receipts/:id/sell", handlers.ManualSellHandler)
+		v1.PATCH("/receipts/:id/autosell", handlers.ToggleAutoSellHandler)
 
 		// Loans
 		v1.POST("/loans/apply", handlers.ApplyForLoanHandler)
+		v1.POST("/loans/input-loan", handlers.InputLoanHandler)
 
 		// Market
-		v1.GET("/market/status", handlers.GetMarketStatusHandler)
+		v1.GET("/market/status", handlers.GetMarketStatusHandler) // legacy
+		v1.GET("/market/all", handlers.GetAllMarketPricesHandler)
 
-		// SSE — real-time agent log stream
+		// SSE & USSD
 		v1.GET("/logs/stream", handlers.StreamLogsHandler)
-
-		// USSD — feature phone state machine
 		v1.POST("/ussd", handlers.USSDHandler)
 	}
 
