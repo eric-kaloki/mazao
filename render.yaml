@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: mazaoplus
+    env: docker
+    plan: free # Change this to standard or pro for production
+    region: frankfurt # Choose the closest region to your users
+    healthCheckPath: /api/v1/market/status
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: GIN_MODE
+        value: release
