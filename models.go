@@ -22,6 +22,8 @@ type ProduceReceipt struct {
 	QuantityBags           int           `json:"quantity_bags"`
 	GradeInfo              string        `json:"grade_info"`
 	HoldingCostPerBagMonth float64       `json:"holding_cost_per_bag_month"` // KES 10 default
+	PriceAtDeposit         float64       `json:"price_at_deposit"`           // market price captured at warehouse entry time
+	DepositValueKES        float64       `json:"deposit_value_kes"`          // bags × PriceAtDeposit — the basis for loan calculation
 	Status                 ReceiptStatus `json:"status"`
 	CreatedAt              time.Time     `json:"created_at"`
 }
@@ -31,7 +33,7 @@ type Loan struct {
 	ID              string    `json:"id"`
 	ReceiptID       string    `json:"receipt_id"`
 	FarmerID        string    `json:"farmer_id"`
-	PrincipalAmount float64   `json:"principal_amount"` // 60% LTV of market value at issuance
+	PrincipalAmount float64   `json:"principal_amount"` // 60% of DepositValueKES — fixed at issuance, does NOT change
 	InterestRate    float64   `json:"interest_rate"`    // fixed 8% annual
 	IsSettled       bool      `json:"is_settled"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -75,6 +77,7 @@ type ReceiptCreateRequest struct {
 }
 
 // LoanApplicationRequest triggers a 60% LTV advance against a specific receipt.
+// The loan amount is calculated from PriceAtDeposit — NOT the current market price.
 type LoanApplicationRequest struct {
 	ReceiptID string `json:"receipt_id" binding:"required"`
 	FarmerID  string `json:"farmer_id"  binding:"required"`
@@ -82,10 +85,10 @@ type LoanApplicationRequest struct {
 
 // LoanApplicationResponse is returned after a successful loan issuance.
 type LoanApplicationResponse struct {
-	Loan          Loan    `json:"loan"`
-	DisbursedKES  float64 `json:"disbursed_kes"`
-	MarketValueAt float64 `json:"market_value_at_application"`
-	LTVPercent    int     `json:"ltv_percent"`
+	Loan            Loan    `json:"loan"`
+	DisbursedKES    float64 `json:"disbursed_kes"`
+	DepositValueKES float64 `json:"deposit_value_kes"`  // value at time of warehouse entry
+	LTVPercent      int     `json:"ltv_percent"`
 }
 
 // SettlementResult holds per-receipt settlement calculation details.
@@ -95,4 +98,20 @@ type SettlementResult struct {
 	GrossRevenue float64 `json:"gross_revenue"`
 	TotalDebt    float64 `json:"total_debt"`
 	NetProfit    float64 `json:"net_profit"`
+}
+
+// ---- USSD DTOs --------------------------------------------------------------
+
+// USSDRequest is the payload sent by the USSD simulator on each keypress.
+type USSDRequest struct {
+	SessionID string `json:"session_id" binding:"required"`
+	FarmerID  string `json:"farmer_id"`
+	Text      string `json:"text"` // accumulated input e.g. "1*F001"
+}
+
+// USSDResponse is returned to the simulator to update the screen.
+type USSDResponse struct {
+	// Type is either "CON" (session continues) or "END" (session terminates)
+	Type    string `json:"type"`
+	Message string `json:"message"`
 }

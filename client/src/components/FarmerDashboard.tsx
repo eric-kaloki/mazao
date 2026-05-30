@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { User, Search, TrendingUp, Lock, CheckCircle, AlertCircle, Coins, RefreshCw } from 'lucide-react'
 import {
   getFarmerReceipts,
@@ -22,45 +22,66 @@ export default function FarmerDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [loanResult, setLoanResult] = useState<LoanApplicationResponse | null>(null)
   const [searched, setSearched] = useState(false)
+  // Track current farmer ID to avoid stale-closure issues in auto-refresh
+  const currentFarmerRef = useRef('')
 
-  // Poll market price so values update live without full refresh
+  // Poll market price every 3s for the price bar display
   useEffect(() => {
-    const fetchMarket = () => getMarketStatus().then(setMarket).catch(() => {})
-    fetchMarket()
-    const interval = setInterval(fetchMarket, 3000)
+    const fetch = () => getMarketStatus().then(setMarket).catch(() => {})
+    fetch()
+    const interval = setInterval(fetch, 3000)
     return () => clearInterval(interval)
   }, [])
 
-  const fetchReceipts = useCallback(async (id: string) => {
-    if (!id.trim()) return
-    setLoading(true)
+  const fetchReceipts = useCallback(async (id: string, silent = false) => {
+    const normalized = id.trim().toUpperCase()
+    if (!normalized) return
+    if (!silent) setLoading(true)
     setError(null)
-    setLoanResult(null)
     try {
-      const data = await getFarmerReceipts(id.trim().toUpperCase())
-      setReceipts(data.receipts || [])
+      const data = await getFarmerReceipts(normalized)
+      setReceipts(data.receipts)
       setSearched(true)
+      currentFarmerRef.current = normalized
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch receipts')
-      setReceipts([])
+      if (!silent) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch receipts')
+        setReceipts([])
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
+
+  // Auto-refresh every 5s when at least one receipt is LOCKED_COLLATERAL
+  // so the UI updates when the agent settles without a manual refresh
+  useEffect(() => {
+    const hasLocked = receipts.some(r => r.status === 'LOCKED_COLLATERAL')
+    if (!hasLocked || !currentFarmerRef.current) return
+    const interval = setInterval(() => {
+      fetchReceipts(currentFarmerRef.current, true /* silent */)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [receipts, fetchReceipts])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     fetchReceipts(farmerId)
   }
 
+  const handleDemoClick = (id: string) => {
+    setFarmerId(id)
+    fetchReceipts(id)
+  }
+
   const handleApplyLoan = async (receipt: EnrichedReceipt) => {
+    if (loanLoading) return // prevent double-click
     setLoanLoading(receipt.id)
     setLoanResult(null)
     setError(null)
     try {
       const result = await applyForLoan({ receipt_id: receipt.id, farmer_id: receipt.farmer_id })
       setLoanResult(result)
-      // Refresh receipts to reflect new status
       await fetchReceipts(farmerId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Loan application failed')
@@ -72,6 +93,7 @@ export default function FarmerDashboard() {
   const currentPrice = market?.current_price ?? 0
   const threshold = market?.target_threshold ?? 3500
   const pricePercent = ((currentPrice - 2500) / (4500 - 2500)) * 100
+  const hasLocked = receipts.some(r => r.status === 'LOCKED_COLLATERAL')
 
   return (
     <div className="farmer-layout">
@@ -83,9 +105,14 @@ export default function FarmerDashboard() {
         <div>
           <h2 className="page-title">Farmer Dashboard</h2>
           <p className="page-subtitle">
-            View your active deposits, market valuations, and apply for instant M-Pesa micro-loans
+            View your active deposits, entry valuations, and apply for instant M-Pesa micro-loans
           </p>
         </div>
+        {hasLocked && (
+          <div className="auto-refresh-badge">
+            <RefreshCw size={12} className="spin-slow" /> Auto-refreshing
+          </div>
+        )}
       </div>
 
       {/* ---- Market Price Bar ---------------------------------------------- */}
@@ -131,7 +158,7 @@ export default function FarmerDashboard() {
               className="input-field"
               placeholder="Enter Farmer ID (e.g. F001)"
               value={farmerId}
-              onChange={(e) => setFarmerId(e.target.value)}
+              onChange={(e) => setFarmerId(e.target.value.toUpperCase())}
               required
             />
           </div>
@@ -146,7 +173,6 @@ export default function FarmerDashboard() {
           </button>
         </form>
 
-        {/* Quick demo farmer shortcuts */}
         <div className="demo-shortcuts">
           <span className="demo-label">Demo farmers:</span>
           {DEMO_FARMERS.map((id) => (
@@ -154,7 +180,7 @@ export default function FarmerDashboard() {
               key={id}
               id={`demo-farmer-${id.toLowerCase()}`}
               className="btn btn-outline demo-shortcut"
-              onClick={() => { setFarmerId(id); fetchReceipts(id) }}
+              onClick={() => handleDemoClick(id)}
             >
               {id}
             </button>
@@ -177,15 +203,16 @@ export default function FarmerDashboard() {
           <div className="loan-success-body">
             <h3>M-Pesa Advance Disbursed!</h3>
             <p>
-              <strong>{formatKES(loanResult.disbursed_kes)}</strong> has been instantly sent to your M-Pesa wallet.
-              Market value at application: {formatKES(loanResult.market_value_at_application)} ({loanResult.ltv_percent}% LTV)
+              <strong>{formatKES(loanResult.disbursed_kes)}</strong> instantly sent to your M-Pesa.
+              Based on deposit value {formatKES(loanResult.deposit_value_kes)} × {loanResult.ltv_percent}% LTV —
+              this amount is <strong>fixed</strong> regardless of market movement.
             </p>
           </div>
           <CheckCircle size={24} className="loan-success-check" />
         </div>
       )}
 
-      {/* ---- Receipts Grid ------------------------------------------------- */}
+      {/* ---- Empty State --------------------------------------------------- */}
       {searched && receipts.length === 0 && !loading && (
         <div className="empty-state animate-in">
           <div className="empty-icon">📭</div>
@@ -194,6 +221,7 @@ export default function FarmerDashboard() {
         </div>
       )}
 
+      {/* ---- Receipts Grid ------------------------------------------------- */}
       {receipts.length > 0 && (
         <div className="receipts-grid">
           {receipts.map((r, i) => (
@@ -212,7 +240,7 @@ export default function FarmerDashboard() {
   )
 }
 
-// ---- ReceiptCard sub-component ----------------------------------------------
+// ---- ReceiptCard -------------------------------------------------------------
 
 interface ReceiptCardProps {
   receipt: EnrichedReceipt
@@ -223,11 +251,15 @@ interface ReceiptCardProps {
 }
 
 function ReceiptCard({ receipt: r, market, loanLoading, onApplyLoan, animDelay }: ReceiptCardProps) {
-  const currentPrice = market?.current_price ?? r.current_price_kes
-  const liveValue = r.quantity_bags * currentPrice
-  const liveMaxLoan = liveValue * 0.60
-  const daysStored = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86400000)
-  const storageCost = daysStored * r.quantity_bags * (r.holding_cost_per_bag_month / 30)
+  const livePrice = market?.current_price ?? r.current_price_kes
+  const liveValue = r.quantity_bags * livePrice
+
+  // Storage fee: accrued from created_at to now
+  const daysStored = Math.max(0, (Date.now() - new Date(r.created_at).getTime()) / 86400000)
+  const storageFee = daysStored * r.quantity_bags * (r.holding_cost_per_bag_month / 30)
+
+  // For AVAILABLE receipts: loan ceiling is based on deposit price (frozen), not live
+  const depositBasedMaxLoan = r.deposit_value_kes * 0.60
 
   const statusBadge = {
     AVAILABLE:         { label: 'Available',   cls: 'badge-available' },
@@ -241,7 +273,7 @@ function ReceiptCard({ receipt: r, market, loanLoading, onApplyLoan, animDelay }
       style={{ animationDelay: `${animDelay}ms` }}
       id={`receipt-card-${r.id.substring(0, 8)}`}
     >
-      {/* Card header */}
+      {/* Header */}
       <div className="rc-header">
         <div>
           <div className="rc-id">#{r.id.substring(0, 8).toUpperCase()}</div>
@@ -256,31 +288,78 @@ function ReceiptCard({ receipt: r, market, loanLoading, onApplyLoan, animDelay }
       {/* Grade */}
       <div className="rc-grade">{r.grade_info}</div>
 
-      {/* Financial metrics */}
-      <div className="rc-metrics">
-        <div className="rc-metric">
-          <span className="rc-metric-label">Market Value</span>
-          <span className="rc-metric-value">{formatKES(liveValue)}</span>
-        </div>
-        <div className="rc-metric">
-          <span className="rc-metric-label">Max Loan (60% LTV)</span>
-          <span className="rc-metric-value rc-metric-gold">{formatKES(liveMaxLoan)}</span>
-        </div>
-        <div className="rc-metric">
-          <span className="rc-metric-label">Days Stored</span>
-          <span className="rc-metric-value">{daysStored}d</span>
-        </div>
-        <div className="rc-metric">
-          <span className="rc-metric-label">Storage Fee</span>
-          <span className="rc-metric-value">{formatKES(storageCost)}</span>
-        </div>
-      </div>
+      {/* Financial metrics — content depends on receipt status */}
+      {r.status === 'AVAILABLE' && (
+        <>
+          <div className="rc-metrics">
+            <div className="rc-metric">
+              <span className="rc-metric-label">Entry Price</span>
+              <span className="rc-metric-value">{formatKES(r.price_at_deposit)}/bag</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Deposit Value</span>
+              <span className="rc-metric-value">{formatKES(r.deposit_value_kes)}</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Live Market Value</span>
+              <span className="rc-metric-value rc-metric-live">{formatKES(liveValue)}</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Max Loan (60% of entry)</span>
+              <span className="rc-metric-value rc-metric-gold">{formatKES(depositBasedMaxLoan)}</span>
+            </div>
+          </div>
+          <div className="rc-price-note">
+            💡 Loan based on entry price (KES {r.price_at_deposit.toFixed(0)}/bag) — not affected by market changes
+          </div>
+        </>
+      )}
 
-      {/* Active loan details */}
-      {r.active_loan && !r.active_loan.is_settled && (
-        <div className="rc-loan-badge">
-          <Lock size={12} />
-          <span>Loan active — {formatKES(r.active_loan.principal_amount)} outstanding</span>
+      {r.status === 'LOCKED_COLLATERAL' && r.active_loan && (
+        <>
+          <div className="rc-metrics">
+            <div className="rc-metric">
+              <span className="rc-metric-label">Entry Price</span>
+              <span className="rc-metric-value">{formatKES(r.price_at_deposit)}/bag</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Loan Issued</span>
+              <span className="rc-metric-value rc-metric-gold">{formatKES(r.active_loan.principal_amount)}</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Days Stored</span>
+              <span className="rc-metric-value">{Math.floor(daysStored)}d</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Accrued Storage Fee</span>
+              <span className="rc-metric-value">{formatKES(storageFee)}</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Current Market Value</span>
+              <span className="rc-metric-value rc-metric-live">{formatKES(liveValue)}</span>
+            </div>
+            <div className="rc-metric">
+              <span className="rc-metric-label">Interest Rate</span>
+              <span className="rc-metric-value">{(r.active_loan.interest_rate * 100).toFixed(0)}% p.a.</span>
+            </div>
+          </div>
+          <div className="rc-loan-badge">
+            <Lock size={12} />
+            <span>Fixed loan: {formatKES(r.active_loan.principal_amount)} — agent monitoring for KES 3,500 peak</span>
+          </div>
+        </>
+      )}
+
+      {r.status === 'SETTLED' && (
+        <div className="rc-metrics">
+          <div className="rc-metric">
+            <span className="rc-metric-label">Entry Price</span>
+            <span className="rc-metric-value">{formatKES(r.price_at_deposit)}/bag</span>
+          </div>
+          <div className="rc-metric">
+            <span className="rc-metric-label">Deposit Value</span>
+            <span className="rc-metric-value">{formatKES(r.deposit_value_kes)}</span>
+          </div>
         </div>
       )}
 
@@ -289,7 +368,7 @@ function ReceiptCard({ receipt: r, market, loanLoading, onApplyLoan, animDelay }
         <button
           id={`apply-loan-${r.id.substring(0, 8)}`}
           className="btn btn-gold apply-btn"
-          disabled={loanLoading === r.id}
+          disabled={loanLoading !== null}
           onClick={() => onApplyLoan(r)}
         >
           {loanLoading === r.id ? (
@@ -303,26 +382,15 @@ function ReceiptCard({ receipt: r, market, loanLoading, onApplyLoan, animDelay }
       {r.status === 'LOCKED_COLLATERAL' && (
         <div className="rc-locked-note">
           <Lock size={13} />
-          Receipt locked as collateral — autonomous agent monitoring for peak price
+          Locked as collateral — autonomous agent monitoring for KES 3,500 threshold
         </div>
       )}
 
       {r.status === 'SETTLED' && (
         <div className="rc-settled-note">
           <CheckCircle size={13} />
-          Loan cleared · Profit disbursed via M-Pesa · Warehouse space released
+          Loan cleared · Net profit disbursed via M-Pesa · Warehouse space released
         </div>
-      )}
-
-      {/* Refresh button for locked receipts */}
-      {r.status === 'LOCKED_COLLATERAL' && (
-        <button
-          className="btn btn-outline refresh-btn"
-          onClick={() => {}}
-          title="Status updates automatically"
-        >
-          <RefreshCw size={12} /> Auto-monitoring active
-        </button>
       )}
     </div>
   )

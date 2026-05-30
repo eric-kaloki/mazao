@@ -67,6 +67,9 @@ func main() {
 
 		// SSE — real-time agent log stream
 		v1.GET("/logs/stream", handlers.StreamLogsHandler)
+
+		// USSD — feature phone state machine
+		v1.POST("/ussd", handlers.USSDHandler)
 	}
 
 	// ---- Serve embedded frontend --------------------------------------------

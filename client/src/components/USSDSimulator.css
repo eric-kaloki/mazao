@@ -1,0 +1,421 @@
+/* USSDSimulator.css — Feature phone USSD simulation */
+
+.ussd-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ---- Content grid --------------------------------------------------------- */
+.ussd-content {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: var(--space-8);
+  align-items: start;
+}
+
+/* ======================================================================== */
+/* PHONE FRAME                                                               */
+/* ======================================================================== */
+
+.phone-frame {
+  width: 280px;
+  background: linear-gradient(180deg, #2a2a2e 0%, #1a1a1e 40%, #111115 100%);
+  border-radius: 32px;
+  padding: 16px 16px 28px;
+  box-shadow:
+    0 0 0 1px #3a3a40,
+    0 4px 24px rgba(0,0,0,0.7),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  margin: 0 auto;
+}
+
+/* Speaker slot */
+.phone-speaker {
+  width: 60px;
+  height: 5px;
+  background: #111;
+  border-radius: 3px;
+  margin: 0 auto 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+/* ---- Status bar ---------------------------------------------------------- */
+.phone-statusbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: #888;
+  padding: 0 4px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.phone-price-ticker {
+  color: #a0e080;
+  font-size: 0.58rem;
+}
+
+/* ---- USSD Screen --------------------------------------------------------- */
+.phone-screen {
+  background: #001a08;
+  border-radius: 8px;
+  border: 2px solid #0a2e14;
+  padding: 10px 10px 14px;
+  min-height: 200px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  color: #b8ffcc;
+  box-shadow: inset 0 2px 12px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,128,40,0.2);
+  scrollbar-width: thin;
+  scrollbar-color: #0a3018 #001208;
+}
+
+.screen-connecting {
+  color: #448844;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.screen-line {
+  display: block;
+  word-break: break-word;
+}
+
+.screen-line--title {
+  color: #7dffaa;
+  font-weight: bold;
+  border-bottom: 1px solid rgba(100,200,100,0.15);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.screen-input-line {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(100,200,100,0.1);
+  padding-top: 5px;
+  color: #aaffcc;
+}
+
+.screen-prompt {
+  color: #44cc66;
+  font-weight: bold;
+}
+
+.screen-input-text {
+  color: #eeffee;
+  letter-spacing: 0.05em;
+}
+
+.screen-cursor {
+  color: #44cc66;
+  animation: blink 0.8s step-end infinite;
+  font-size: 0.65rem;
+}
+
+.screen-ended {
+  margin-top: 8px;
+  text-align: center;
+  color: #448844;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  border-top: 1px solid rgba(100,200,100,0.1);
+  padding-top: 6px;
+}
+
+/* ---- Softkeys row -------------------------------------------------------- */
+.phone-softkeys {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.softkey {
+  background: #222228;
+  border: 1px solid #333340;
+  color: #aaa;
+  border-radius: 8px 8px 4px 4px;
+  width: 60px;
+  height: 28px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.softkey:active { transform: scale(0.94); background: #2a2a32; }
+.softkey:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.phone-dpad {
+  width: 52px;
+  height: 52px;
+  background: #1e1e22;
+  border-radius: 50%;
+  border: 2px solid #333340;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.dpad-center {
+  width: 18px;
+  height: 18px;
+  background: #282830;
+  border-radius: 50%;
+  border: 1px solid #3a3a44;
+}
+
+/* ---- Keypad --------------------------------------------------------------- */
+.phone-keypad {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.keypad-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.key-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #2e2e35 0%, #222228 100%);
+  border: 1px solid #3a3a44;
+  border-bottom: 2px solid #111116;
+  border-radius: 8px;
+  padding: 8px 4px 6px;
+  cursor: pointer;
+  transition: all 0.08s;
+  color: #dde;
+  gap: 2px;
+}
+
+.key-btn:active {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+  background: #222228;
+}
+
+.key-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.key-main {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #eef;
+}
+
+.key-sub {
+  font-size: 0.44rem;
+  color: #666;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  height: 8px;
+}
+
+.key-special {
+  font-size: 0.62rem !important;
+}
+
+.key-special .key-main {
+  font-size: 0.68rem;
+}
+
+/* ---- Call / End row ------------------------------------------------------- */
+.keypad-call-row {
+  margin-top: 2px;
+  gap: 30px;
+  justify-items: center;
+  padding: 0 20px;
+}
+
+.call-btn {
+  width: 52px;
+  height: 36px;
+  border-radius: 24px;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.1s;
+  font-weight: bold;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+.call-btn--green {
+  background: linear-gradient(180deg, #2e7d32, #1b5e20);
+  color: #90ff90;
+}
+
+.call-btn--red {
+  background: linear-gradient(180deg, #c62828, #8b0000);
+  color: #ffaaaa;
+}
+
+.call-btn:active { transform: scale(0.93); }
+.call-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- Phone brand --------------------------------------------------------- */
+.phone-brand {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: #333340;
+  letter-spacing: 0.08em;
+}
+
+.phone-chin {
+  width: 40px;
+  height: 4px;
+  background: #333340;
+  border-radius: 2px;
+  margin: 4px auto 0;
+}
+
+/* ======================================================================== */
+/* GUIDE PANEL                                                               */
+/* ======================================================================== */
+
+.guide-card {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.guide-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* ---- Flow tree ----------------------------------------------------------- */
+.flow-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.flow-node--root {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-gold-700);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(249, 168, 37, 0.08);
+  border: 1px solid rgba(249, 168, 37, 0.2);
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+.flow-children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-5);
+  border-left: 2px solid var(--color-border);
+  margin-left: var(--space-2);
+}
+
+.flow-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow-node {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-green-400);
+}
+
+.flow-desc {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* ---- Tips ---------------------------------------------------------------- */
+.guide-tip {
+  padding: var(--space-4);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.guide-tip h4 {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.guide-tip ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-4);
+}
+
+.guide-tip li {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.guide-tip p {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.guide-tip--gold {
+  border-color: rgba(249, 168, 37, 0.18);
+  background: rgba(249, 168, 37, 0.04);
+}
+
+.guide-tip--gold h4 {
+  color: var(--color-gold-800);
+}
+
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-text-primary);
+}
+
+/* ---- Responsive ---------------------------------------------------------- */
+@media (max-width: 900px) {
+  .ussd-content {
+    grid-template-columns: 1fr;
+  }
+  .phone-frame {
+    width: 260px;
+  }
+}

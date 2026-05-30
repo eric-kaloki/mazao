@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { Warehouse, TrendingUp, Activity } from 'lucide-react'
+import { Warehouse, TrendingUp, Activity, Smartphone } from 'lucide-react'
 import WarehousePortal from './components/WarehousePortal'
 import FarmerDashboard from './components/FarmerDashboard'
 import LiveMonitor from './components/LiveMonitor'
+import USSDSimulator from './components/USSDSimulator'
 import './App.css'
 
-type Tab = 'warehouse' | 'farmer' | 'monitor'
+type Tab = 'warehouse' | 'farmer' | 'monitor' | 'ussd'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode; description: string }[] = [
   {
@@ -25,6 +26,12 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode; description: string
     label: 'Live Monitor',
     icon: <Activity size={18} />,
     description: 'Real-time market prices & agent activity',
+  },
+  {
+    id: 'ussd',
+    label: 'USSD Simulator',
+    icon: <Smartphone size={18} />,
+    description: 'Feature phone access for offline farmers',
   },
 ]
 
@@ -71,11 +78,12 @@ export default function App() {
         {activeTab === 'warehouse' && <WarehousePortal />}
         {activeTab === 'farmer' && <FarmerDashboard />}
         {activeTab === 'monitor' && <LiveMonitor />}
+        {activeTab === 'ussd' && <USSDSimulator />}
       </main>
 
       {/* ---- Footer -------------------------------------------------------- */}
       <footer className="app-footer">
-        <p>MazaoPlus &copy; 2025 — Built for Hack Day &bull; Powered by Go + React</p>
+        <p>MazaoPlus &copy; 2025 — Built for Hack Day &bull; Go + React &bull; USSD for every farmer</p>
       </footer>
     </div>
   )
